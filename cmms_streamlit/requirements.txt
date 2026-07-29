@@ -1,0 +1,8 @@
+streamlit>=1.38
+sqlalchemy>=2.0
+"cloud-sql-python-connector[pg8000]">=1.10
+pg8000>=1.31
+pandas>=2.2
+gspread>=6.1          # solo necesario para db/migrate_from_sheets.py (lectura del Sheet origen)
+google-auth>=2.34     # idem
+python-dateutil>=2.9
