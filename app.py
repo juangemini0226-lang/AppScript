@@ -8,7 +8,7 @@ dashboard de inicio con indicadores reales y atajos de creación rápida.
 import streamlit as st
 
 from services.users_service import get_current_user, validar_login_por_pin_rapido
-from services.admin_service import list_feature_flags
+from services.admin_service import is_module_visible_for_role
 from services.dashboard_service import get_kpis
 
 st.set_page_config(
@@ -101,21 +101,21 @@ def _home_page():
 
 def _build_navigation():
     usuario = st.session_state["usuario"]
-    flags = list_feature_flags()
+    rol = usuario["rol"]
 
     home = st.Page(_home_page, title="Inicio", icon="🏠", default=True)
     pages = [home]
 
-    if flags.get("activos"):
+    if is_module_visible_for_role("activos", rol):
         pages.append(st.Page("app_pages/activos.py", title="Activos", icon="🏭"))
-    if flags.get("ordenes_trabajo"):
+    if is_module_visible_for_role("ordenes_trabajo", rol):
         pages.append(st.Page("app_pages/ordenes_trabajo.py", title="Órdenes de Trabajo", icon="🛠️"))
-    if flags.get("novedades"):
+    if is_module_visible_for_role("novedades", rol):
         pages.append(st.Page("app_pages/novedades.py", title="Novedades", icon="📋"))
-    if flags.get("maquilas"):
+    if is_module_visible_for_role("maquilas", rol):
         pages.append(st.Page("app_pages/maquilas.py", title="Maquilas", icon="🏗️"))
 
-    if usuario["rol"] in ("PLANEADOR", "AUDITOR"):
+    if rol in ("PLANEADOR", "AUDITOR"):
         pages.append(st.Page("app_pages/admin.py", title="Admin", icon="⚙️"))
 
     return st.navigation(pages)
