@@ -22,6 +22,7 @@ MODULOS_DISPONIBLES = [
     {"key": "ordenes_trabajo", "label": "Órdenes de Trabajo"},
     {"key": "novedades", "label": "Novedades"},
     {"key": "maquilas", "label": "Maquilas"},
+    {"key": "mapa_planta", "label": "Mapa de planta"},
 ]
 
 ROLES_DISPONIBLES = ["TECNICO", "TECNICO_B", "TECNICO_MONTAJE", "PLANEADOR", "AUDITOR"]
@@ -57,6 +58,14 @@ def actualizar_usuario(id_usuario: str, nombre: str, rol: str) -> int:
 def set_usuario_activo(id_usuario: str, activo: bool) -> int:
     db = get_connector()
     return db.update("usuarios", where={"id_usuario": id_usuario}, data={"activo": activo})
+
+
+def eliminar_usuario(id_usuario: str) -> int:
+    """Borrado definitivo. Para uso ocasional — normalmente basta con
+    desactivar (set_usuario_activo) para conservar el historial de OT
+    y novedades donde ese usuario aparece como técnico/creador."""
+    db = get_connector()
+    return db.delete("usuarios", where={"id_usuario": id_usuario})
 
 
 # ----------------------------------------------------------------------

@@ -41,6 +41,22 @@ st.markdown("""
     section[data-testid="stSidebar"] {
         border-right: 1px solid #eee;
     }
+
+    /* ---- Responsive / móvil ---- */
+    @media (max-width: 640px) {
+        div[data-testid="stMetric"] { padding: 10px 12px; }
+        div[data-testid="stMetricValue"] { font-size: 1.3rem; }
+        h1 { font-size: 1.5rem !important; }
+        h2 { font-size: 1.2rem !important; }
+        .block-container { padding-left: 1rem; padding-right: 1rem; }
+        div[data-testid="column"] { min-width: 100% !important; }
+    }
+    /* Streamlit ya colapsa el sidebar en pantallas angostas a un menú
+       hamburguesa; esto solo pule tamaños y espaciados para que se vea
+       bien una vez abierto en el celular. */
+    section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] p {
+        font-size: 0.95rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -141,6 +157,8 @@ def _build_navigation():
         pages.append(st.Page("app_pages/novedades.py", title="Novedades", icon="📋"))
     if is_module_visible_for_role("maquilas", rol):
         pages.append(st.Page("app_pages/maquilas.py", title="Maquilas", icon="🏗️"))
+    if is_module_visible_for_role("mapa_planta", rol):
+        pages.append(st.Page("app_pages/mapa_planta.py", title="Mapa de planta", icon="🗺️"))
 
     if rol in ("PLANEADOR", "AUDITOR"):
         pages.append(st.Page("app_pages/admin.py", title="Admin", icon="⚙️"))

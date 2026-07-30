@@ -10,10 +10,15 @@ frontend, con el rol PLANEADOR/AUDITOR.
 import streamlit as st
 
 from services.admin_service import (
-    list_usuarios, crear_usuario, actualizar_usuario, set_usuario_activo,
+    list_usuarios, crear_usuario, actualizar_usuario, set_usuario_activo, eliminar_usuario,
     list_feature_flags, set_feature_flag, MODULOS_DISPONIBLES, ROLES_DISPONIBLES,
     get_feature_flags_full, set_feature_flag_full,
     list_tables, get_table_preview, get_table_row_count, run_readonly_query,
+)
+from services.jerarquia_service import (
+    list_nodos, crear_nodo, actualizar_nodo, desactivar_nodo, eliminar_nodo,
+    list_tipos_activo, crear_tipo_activo, desactivar_tipo_activo,
+    CLASES_ISO14224, TIPOS_JERARQUIA,
 )
 
 if "usuario" not in st.session_state:
@@ -26,8 +31,8 @@ if st.session_state["usuario"]["rol"] not in ("PLANEADOR", "AUDITOR"):
 
 st.title("⚙️ Administración")
 
-tab_modulos, tab_usuarios, tab_crear_usuario, tab_db = st.tabs(
-    ["Módulos de la app", "Usuarios", "➕ Crear usuario", "🗄️ Explorador de base de datos"]
+tab_modulos, tab_usuarios, tab_crear_usuario, tab_jerarquia, tab_db = st.tabs(
+    ["Módulos de la app", "Usuarios", "➕ Crear usuario", "🧬 Jerarquía ISO 14224", "🗄️ Explorador de base de datos"]
 )
 
 with tab_modulos:
@@ -65,7 +70,7 @@ with tab_usuarios:
     usuarios = list_usuarios()
 
     for u in usuarios:
-        col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
         with col1:
             nuevo_nombre = st.text_input("Nombre", value=u["nombre"], key=f"nom_{u['id_usuario']}",
                                            label_visibility="collapsed")
@@ -80,6 +85,24 @@ with tab_usuarios:
             )
         with col4:
             activo = st.checkbox("Activo", value=bool(u.get("activo", True)), key=f"act_{u['id_usuario']}")
+        with col5:
+            if st.button("🗑️", key=f"del_{u['id_usuario']}", help="Eliminar definitivamente"):
+                st.session_state[f"confirmar_del_{u['id_usuario']}"] = True
+
+        if st.session_state.get(f"confirmar_del_{u['id_usuario']}"):
+            st.warning(
+                f"¿Seguro que quieres eliminar DEFINITIVAMENTE a **{u['nombre']}**? "
+                "Esto no se puede deshacer. Si solo quieres que no pueda entrar, "
+                "mejor desmarca la casilla 'Activo' en vez de eliminar."
+            )
+            c1, c2 = st.columns(2)
+            if c1.button("Sí, eliminar definitivamente", key=f"confirm_yes_{u['id_usuario']}"):
+                eliminar_usuario(u["id_usuario"])
+                del st.session_state[f"confirmar_del_{u['id_usuario']}"]
+                st.rerun()
+            if c2.button("Cancelar", key=f"confirm_no_{u['id_usuario']}"):
+                del st.session_state[f"confirmar_del_{u['id_usuario']}"]
+                st.rerun()
 
         if (nuevo_nombre != u["nombre"]) or (nuevo_rol != u["rol"]):
             actualizar_usuario(u["id_usuario"], nuevo_nombre, nuevo_rol)
@@ -147,3 +170,90 @@ with tab_db:
                     st.error(str(e))
                 except Exception as e:
                     st.error(f"Error en la consulta: {e}")
+
+with tab_jerarquia:
+    st.subheader("🧬 Jerarquía técnica y clasificación ISO 14224")
+    st.caption(
+        "ISO 14224 clasifica cada nivel del equipo como Unidad de equipo, "
+        "Subunidad, Componente o Ítem mantenible. Esto es adicional al tipo "
+        "(Sistema/Subsistema/Ítem/Parte) que ya usa la jerarquía existente."
+    )
+
+    sub_nodos, sub_crear_nodo, sub_tipos = st.tabs(
+        ["Nodos existentes", "➕ Crear nodo", "Catálogo de tipos de activo"]
+    )
+
+    with sub_nodos:
+        filtro_tipo = st.selectbox("Filtrar por tipo", ["TODOS"] + TIPOS_JERARQUIA)
+        nodos = list_nodos(tipo=None if filtro_tipo == "TODOS" else filtro_tipo)
+
+        if not nodos:
+            st.info("No hay nodos con ese filtro.")
+        else:
+            for n in nodos:
+                with st.expander(f"{n['nombre']} ({n.get('tipo', '—')}) — {n.get('clase_iso14224') or 'sin clasificar'}"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        nombre_e = st.text_input("Nombre", value=n["nombre"], key=f"jn_{n['id_activo']}")
+                        tipo_e = st.selectbox("Tipo", TIPOS_JERARQUIA,
+                                                index=TIPOS_JERARQUIA.index(n["tipo"]) if n.get("tipo") in TIPOS_JERARQUIA else 0,
+                                                key=f"jt_{n['id_activo']}")
+                    with col2:
+                        clase_actual = n.get("clase_iso14224")
+                        clase_e = st.selectbox(
+                            "Clase ISO 14224", ["(sin clasificar)"] + CLASES_ISO14224,
+                            index=(CLASES_ISO14224.index(clase_actual) + 1) if clase_actual in CLASES_ISO14224 else 0,
+                            key=f"jc_{n['id_activo']}",
+                        )
+
+                    bcol1, bcol2 = st.columns(2)
+                    if bcol1.button("💾 Guardar", key=f"jsave_{n['id_activo']}"):
+                        clase_final = None if clase_e == "(sin clasificar)" else clase_e
+                        actualizar_nodo(n["id_activo"], nombre_e, tipo_e, clase_final)
+                        st.success("Actualizado.")
+                        st.rerun()
+                    if bcol2.button("🗑️ Desactivar", key=f"jdeact_{n['id_activo']}"):
+                        desactivar_nodo(n["id_activo"])
+                        st.warning("Nodo desactivado.")
+                        st.rerun()
+
+    with sub_crear_nodo:
+        st.write("Crear un nodo nuevo en la jerarquía técnica.")
+        with st.form("crear_nodo_form", clear_on_submit=True):
+            nombre_nuevo = st.text_input("Nombre *")
+            tipo_nuevo = st.selectbox("Tipo *", TIPOS_JERARQUIA)
+            padre_opciones = [{"id_activo": None, "nombre": "— Ninguno (raíz) —"}] + list_nodos()
+            padre_nuevo = st.selectbox("Nodo padre", padre_opciones, format_func=lambda p: p["nombre"])
+            clase_nueva = st.selectbox("Clase ISO 14224", ["(sin clasificar)"] + CLASES_ISO14224)
+            enviado = st.form_submit_button("Crear nodo")
+
+        if enviado:
+            if not nombre_nuevo:
+                st.error("El nombre es obligatorio.")
+            else:
+                clase_final = None if clase_nueva == "(sin clasificar)" else clase_nueva
+                padre_id = padre_nuevo.get("id_activo") if isinstance(padre_nuevo, dict) else None
+                resultado = crear_nodo(nombre_nuevo, tipo_nuevo, padre_id, clase_final)
+                st.success(f"Nodo creado: {resultado['id_activo']} — {resultado['nombre']}")
+
+    with sub_tipos:
+        st.write("Catálogo de tipos de activo (estandariza lo que antes era texto libre).")
+        tipos = list_tipos_activo()
+        if tipos:
+            st.dataframe(tipos, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay tipos de activo registrados.")
+
+        st.divider()
+        with st.form("crear_tipo_activo_form", clear_on_submit=True):
+            nombre_tipo = st.text_input("Nombre del tipo *")
+            clase_tipo = st.selectbox("Clase ISO 14224 *", CLASES_ISO14224)
+            descripcion_tipo = st.text_input("Descripción")
+            enviado_tipo = st.form_submit_button("Crear tipo de activo")
+
+        if enviado_tipo:
+            if not nombre_tipo:
+                st.error("El nombre es obligatorio.")
+            else:
+                resultado = crear_tipo_activo(nombre_tipo, clase_tipo, descripcion_tipo)
+                st.success(f"Tipo de activo creado: {resultado['nombre']}")
