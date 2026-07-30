@@ -1,35 +1,29 @@
 """
 services/activos_service.py
 =============================
-Portado desde activos.gs (Apps Script). Misma lógica de negocio, mismas
-firmas de función (traducidas a snake_case), pero en vez de leer un
-Google Sheet con SpreadsheetApp, consulta el DBConnector activo
-(hoy Cloud SQL, ver db/factory.py).
+Portado desde activos.gs, mismas firmas en snake_case, hablando con
+DBConnector en vez de SpreadsheetApp.
 
-Equivalencias con el código original:
-    getEquipos()            -> get_equipos()
-    getDataJerarquia()      -> get_data_jerarquia()
-    getSistemasSimple()     -> get_sistemas_simple()
-    getSubsistemasSimple()  -> get_subsistemas_simple()
-    getItemsSimple()        -> get_items_simple()
-    getAveriasSimple()      -> get_averias_simple()
-    getSolucionesSimple()   -> get_soluciones_simple()
-    consultarUbicacionMolde() -> consultar_ubicacion_molde()
+Sección nueva (reconstrucción): creación y edición de activos desde el
+frontend, para que el rol PLANEADOR no dependa del Sheet ni de tocar
+la base a mano.
 """
 
+from utils.ids import new_id
 from db.factory import get_connector
 
 
+# ----------------------------------------------------------------------
+# LECTURA
+# ----------------------------------------------------------------------
+
 def get_equipos() -> list[dict]:
-    """Equipos principales de la tabla ACTIVOS (activo=True y tipo=EQUIPO)."""
     db = get_connector()
     rows = db.fetch_all("activos", where={"activo": True, "tipo": "EQUIPO"})
     return [{"id": r["id_activo"], "nombre": r["nombre"]} for r in rows]
 
 
 def get_data_jerarquia(tipo: str, padre_id: str | None = None) -> list[dict]:
-    """Lee JERARQUIA_TECNICA filtrando por tipo (SISTEMA/SUBSISTEMA/ITEM) y,
-    opcionalmente, por el padre."""
     db = get_connector()
     where = {"activo": True, "tipo": tipo}
     if padre_id:
@@ -63,27 +57,16 @@ def get_soluciones_simple(averia_id: str) -> list[dict]:
 
 
 def consultar_ubicacion_molde(molde_id: str) -> dict:
-    """
-    Ficha técnica + ubicación actual de un molde.
-    Portado de consultarUbicacionMolde() en activos.gs.
-    """
     db = get_connector()
     row = db.fetch_one("activos", where={"id_activo": molde_id})
 
     info = {
-        "id": molde_id,
-        "nombre": "Desconocido",
-        "tipo": "-",
-        "ciclos": 0,
-        "ultimo_alistamiento": "No registrado",
-        "ubicacion_fisica": "No definida",
-        "version": "N/A",
-        "gancho": "N/A", "botadores": "N/A",
-        "puentes_agua": "N/A", "puentes_aire": "N/A",
-        "chapetas": "N/A", "manipulador": "N/A",
-        "atemperador": "N/A", "accesorios": "N/A", "tip": "N/A",
+        "id": molde_id, "nombre": "Desconocido", "tipo": "-", "ciclos": 0,
+        "ultimo_alistamiento": "No registrado", "ubicacion_fisica": "No definida",
+        "version": "N/A", "gancho": "N/A", "botadores": "N/A",
+        "puentes_agua": "N/A", "puentes_aire": "N/A", "chapetas": "N/A",
+        "manipulador": "N/A", "atemperador": "N/A", "accesorios": "N/A", "tip": "N/A",
     }
-
     if row:
         info.update({
             "nombre": row.get("nombre") or "Sin nombre",
@@ -102,5 +85,48 @@ def consultar_ubicacion_molde(molde_id: str) -> dict:
             "version": row.get("version_actual") or "N/A",
             "ultimo_alistamiento": row.get("ultimo_alistamiento") or "No registrado",
         })
-
     return info
+
+
+def list_activos_todos(solo_activos: bool = True) -> list[dict]:
+    db = get_connector()
+    where = {"activo": True} if solo_activos else None
+    return db.fetch_all("activos", where=where, order_by="nombre")
+
+
+# ----------------------------------------------------------------------
+# ESCRITURA (nuevo)
+# ----------------------------------------------------------------------
+
+def crear_activo(data: dict) -> dict:
+    """
+    data espera: nombre, tipo (PLANTA/EQUIPO/MOLDE), padre_id,
+    tipoactivo, fabricante, ubicacion, peso, familia.
+    """
+    db = get_connector()
+    prefijos = {"PLANTA": "PLT", "EQUIPO": "EQ", "MOLDE": "MOL"}
+    prefijo = prefijos.get((data.get("tipo") or "").upper(), "ACT")
+
+    registro = {
+        "id_activo": new_id(prefijo),
+        "nombre": data["nombre"],
+        "tipo": data.get("tipo", "EQUIPO"),
+        "padre_id": data.get("padre_id"),
+        "activo": True,
+        "tipoactivo": data.get("tipoactivo"),
+        "fabricante": data.get("fabricante"),
+        "ubicacion": data.get("ubicacion"),
+        "peso": data.get("peso"),
+        "familia": data.get("familia"),
+    }
+    return db.insert("activos", registro)
+
+
+def actualizar_activo(id_activo: str, data: dict) -> int:
+    db = get_connector()
+    return db.update("activos", where={"id_activo": id_activo}, data=data)
+
+
+def desactivar_activo(id_activo: str) -> int:
+    db = get_connector()
+    return db.update("activos", where={"id_activo": id_activo}, data={"activo": False})

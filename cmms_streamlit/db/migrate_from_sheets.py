@@ -32,6 +32,7 @@ continua.
 import os
 import re
 import json
+import time
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -127,6 +128,7 @@ def main():
             migrate_sheet(gc, engine, sheet_id, name)
         except Exception as e:
             print(f"  ✘ ERROR en {name}: {e}")
+        time.sleep(2)  # evita el límite de cuota de lectura de Google Sheets
 
     print("\nMigración terminada. Revisa los ✘ arriba si algo falló.")
 

@@ -1,17 +1,21 @@
 """
 app.py
 ======
-Entrada principal de la app CMMS en Streamlit.
+Entrada principal. Reconstrucción: navegación dinámica.
 
-Reemplaza a ui.html / admin.html (los formularios web servidos por el
-Apps Script). La navegación por páginas usa el sistema nativo de
-Streamlit (carpeta `pages/`), equivalente a las distintas vistas que
-antes vivían todas en un solo HTML con showModalDialog / includes.
+En vez de la carpeta pages/ fija de Streamlit (donde todo usuario ve
+todos los módulos), el menú se arma en tiempo real combinando:
+  1. Qué módulos están ACTIVOS (tabla feature_flags, controlada por Admin)
+  2. Qué rol tiene el usuario logueado (algunos módulos son solo Admin)
+
+Así, apagar un módulo desde la página Admin lo quita del menú de todos
+los usuarios al instante (con un refresh), sin tocar código.
 """
 
 import streamlit as st
 
 from services.users_service import get_current_user, validar_login_por_pin_rapido
+from services.admin_service import list_feature_flags
 
 st.set_page_config(
     page_title="CMMS FLA-EICE · Línea 3 Envasado",
@@ -49,6 +53,39 @@ def _login_form():
                 st.error(str(e))
 
 
+def _home_page():
+    usuario = st.session_state["usuario"]
+    st.title("Panel CMMS - Línea 3 Envasado")
+    st.info(
+        f"Bienvenido, **{usuario['nombre']}**. Usa el menú de la izquierda "
+        "para navegar entre los módulos disponibles para tu rol."
+    )
+
+
+def _build_navigation():
+    usuario = st.session_state["usuario"]
+    flags = list_feature_flags()
+
+    home = st.Page(_home_page, title="Inicio", icon="🏠", default=True)
+    pages = [home]
+
+    if flags.get("activos"):
+        pages.append(st.Page("app_pages/activos.py", title="Activos", icon="🏭"))
+    if flags.get("ordenes_trabajo"):
+        pages.append(st.Page("app_pages/ordenes_trabajo.py", title="Órdenes de Trabajo", icon="🛠️"))
+    if flags.get("novedades"):
+        pages.append(st.Page("app_pages/novedades.py", title="Novedades", icon="📋"))
+    if flags.get("maquilas"):
+        pages.append(st.Page("app_pages/maquilas.py", title="Maquilas", icon="🏗️"))
+
+    # Admin siempre visible para PLANEADOR/AUDITOR, sin importar feature_flags
+    # (si no, un admin podría apagarse a sí mismo el acceso a Admin).
+    if usuario["rol"] in ("PLANEADOR", "AUDITOR"):
+        pages.append(st.Page("app_pages/admin.py", title="Admin", icon="⚙️"))
+
+    return st.navigation(pages)
+
+
 def main():
     if "usuario" not in st.session_state:
         _login_form()
@@ -62,11 +99,8 @@ def main():
             del st.session_state["usuario"]
             st.rerun()
 
-    st.title("Panel CMMS - Línea 3 Envasado")
-    st.info(
-        "Usa el menú de la izquierda (páginas) para navegar: "
-        "Activos, Órdenes de Trabajo, Novedades, Maquilas, Admin."
-    )
+    nav = _build_navigation()
+    nav.run()
 
 
 if __name__ == "__main__":
