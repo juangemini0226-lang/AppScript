@@ -86,3 +86,64 @@ def set_feature_flag(feature_key: str, activo: bool) -> None:
 
 def is_feature_enabled(feature_key: str) -> bool:
     return list_feature_flags().get(feature_key, True)
+
+
+# ----------------------------------------------------------------------
+# EXPLORADOR DE BASE DE DATOS (nuevo)
+# ----------------------------------------------------------------------
+
+def list_tables() -> list[str]:
+    """Lista todas las tablas del schema 'public', para el selector del
+    explorador de base de datos en Admin."""
+    db = get_connector()
+    rows = db.execute_raw(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'public' ORDER BY table_name"
+    )
+    return [r["table_name"] for r in rows]
+
+
+def get_table_preview(table_name: str, limit: int = 200) -> list[dict]:
+    """
+    Trae filas de una tabla para vista rápida. table_name se valida
+    contra list_tables() antes de usarse en el SQL (nunca se interpola
+    input libre del usuario en la consulta).
+    """
+    if table_name not in list_tables():
+        raise ValueError("Tabla no reconocida.")
+    db = get_connector()
+    return db.execute_raw(f"SELECT * FROM {table_name} LIMIT {int(limit)}")
+
+
+def get_table_row_count(table_name: str) -> int:
+    if table_name not in list_tables():
+        raise ValueError("Tabla no reconocida.")
+    db = get_connector()
+    rows = db.execute_raw(f"SELECT COUNT(*) as c FROM {table_name}")
+    return rows[0]["c"] if rows else 0
+
+
+def run_readonly_query(sql: str, limit: int = 500) -> list[dict]:
+    """
+    Corre una consulta SQL arbitraria pero SOLO de lectura: exige que
+    empiece por SELECT (o WITH ... SELECT) y bloquea palabras clave de
+    escritura, como red de seguridad básica para un panel de admin.
+    No reemplaza permisos de base de datos reales, pero evita que un
+    error de tecleo borre datos por accidente desde este panel.
+    """
+    sql_limpio = sql.strip().rstrip(";")
+    sql_upper = sql_limpio.upper()
+
+    if not (sql_upper.startswith("SELECT") or sql_upper.startswith("WITH")):
+        raise ValueError("Solo se permiten consultas SELECT (de lectura) desde este panel.")
+
+    palabras_prohibidas = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER",
+                             "TRUNCATE", "CREATE", "GRANT", "REVOKE"]
+    for palabra in palabras_prohibidas:
+        if palabra in sql_upper:
+            raise ValueError(f"La palabra '{palabra}' no está permitida en este panel de solo lectura.")
+
+    db = get_connector()
+    if "LIMIT" not in sql_upper:
+        sql_limpio = f"{sql_limpio} LIMIT {int(limit)}"
+    return db.execute_raw(sql_limpio)
