@@ -12,6 +12,7 @@ import streamlit as st
 from services.admin_service import (
     list_usuarios, crear_usuario, actualizar_usuario, set_usuario_activo,
     list_feature_flags, set_feature_flag, MODULOS_DISPONIBLES,
+    list_tables, get_table_preview, get_table_row_count, run_readonly_query,
 )
 
 if "usuario" not in st.session_state:
@@ -24,8 +25,8 @@ if st.session_state["usuario"]["rol"] not in ("PLANEADOR", "AUDITOR"):
 
 st.title("⚙️ Administración")
 
-tab_modulos, tab_usuarios, tab_crear_usuario = st.tabs(
-    ["Módulos de la app", "Usuarios", "➕ Crear usuario"]
+tab_modulos, tab_usuarios, tab_crear_usuario, tab_db = st.tabs(
+    ["Módulos de la app", "Usuarios", "➕ Crear usuario", "🗄️ Explorador de base de datos"]
 )
 
 with tab_modulos:
@@ -85,3 +86,48 @@ with tab_crear_usuario:
         else:
             resultado = crear_usuario(nombre, correo, rol)
             st.success(f"Usuario creado: {resultado['id_usuario']} — {resultado['nombre']}")
+
+with tab_db:
+    st.subheader("🗄️ Explorador de base de datos")
+    st.caption(
+        "Solo lectura: puedes ver el contenido de cualquier tabla y correr "
+        "consultas SELECT. No se permite insertar, editar ni borrar desde aquí "
+        "— eso protege los datos de un error de tecleo."
+    )
+
+    sub_tablas, sub_sql = st.tabs(["Ver tablas", "Consulta SQL personalizada"])
+
+    with sub_tablas:
+        tablas = list_tables()
+        tabla_sel = st.selectbox("Tabla", tablas)
+        if tabla_sel:
+            try:
+                total = get_table_row_count(tabla_sel)
+                st.caption(f"{total} fila(s) en total. Mostrando hasta 200.")
+                filas = get_table_preview(tabla_sel, limit=200)
+                if filas:
+                    st.dataframe(filas, use_container_width=True, hide_index=True)
+                else:
+                    st.info("La tabla está vacía.")
+            except Exception as e:
+                st.error(f"Error consultando la tabla: {e}")
+
+    with sub_sql:
+        st.caption("Ejemplo: SELECT * FROM ot WHERE prioridad = 'ALTA' ORDER BY fecha DESC")
+        sql_input = st.text_area("Consulta SQL (solo SELECT)", height=100,
+                                   placeholder="SELECT * FROM activos WHERE tipo = 'MOLDE'")
+        if st.button("▶️ Ejecutar consulta"):
+            if not sql_input.strip():
+                st.warning("Escribe una consulta primero.")
+            else:
+                try:
+                    resultado = run_readonly_query(sql_input)
+                    if resultado:
+                        st.success(f"{len(resultado)} fila(s) devueltas.")
+                        st.dataframe(resultado, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("La consulta no devolvió filas.")
+                except ValueError as e:
+                    st.error(str(e))
+                except Exception as e:
+                    st.error(f"Error en la consulta: {e}")
