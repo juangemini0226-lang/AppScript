@@ -17,6 +17,33 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown("""
+<style>
+    div[data-testid="stMetric"] {
+        background-color: #f8f9fb;
+        border: 1px solid #e6e6e6;
+        border-radius: 10px;
+        padding: 14px 16px;
+    }
+    div[data-testid="stMetricValue"] { font-size: 1.8rem; }
+    .stTabs [data-baseweb="tab-list"] { gap: 4px; }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px 8px 0 0;
+        padding: 8px 16px;
+    }
+    div[data-testid="stExpander"] {
+        border: 1px solid #e6e6e6;
+        border-radius: 10px;
+    }
+    button[kind="primary"], button[kind="secondary"] {
+        border-radius: 8px;
+    }
+    section[data-testid="stSidebar"] {
+        border-right: 1px solid #eee;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 
 def _login_form():
     st.title("🛠️ CMMS · FLA-EICE")
@@ -129,8 +156,10 @@ def main():
     usuario = st.session_state["usuario"]
 
     with st.sidebar:
-        st.success(f"👤 {usuario['nombre']}\n\n**Rol:** {usuario['rol']}")
-        if st.button("Cerrar sesión"):
+        st.markdown(f"### 👤 {usuario['nombre']}")
+        st.caption(f"Rol: **{usuario['rol']}**")
+        st.divider()
+        if st.button("🚪 Cerrar sesión", use_container_width=True):
             del st.session_state["usuario"]
             st.rerun()
 

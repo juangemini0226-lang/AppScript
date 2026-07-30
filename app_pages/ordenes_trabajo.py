@@ -25,19 +25,24 @@ tab_kanban, tab_tablero, tab_crear = st.tabs(["📊 Tablero Kanban", "Lista y de
 
 with tab_kanban:
     conteos = get_ot_por_estado()
+    colores_prioridad = {"ALTA": "#e74c3c", "MEDIA": "#f39c12", "BAJA": "#27ae60"}
     cols = st.columns(len(ESTADOS_OT))
     for col, estado in zip(cols, ESTADOS_OT):
         with col:
             st.metric(estado.replace("_", " "), conteos.get(estado, 0))
             ordenes_col = list_ot(estado=estado, limit=10)
             for ot in ordenes_col:
+                color = colores_prioridad.get(ot.get("prioridad"), "#bbb")
                 st.markdown(
-                    f"<div style='border:1px solid #ddd;border-radius:8px;padding:8px;"
-                    f"margin-bottom:6px;font-size:0.85em;'>"
+                    f"<div style='border-left:4px solid {color};border:1px solid #e6e6e6;"
+                    f"border-left-width:4px;border-radius:8px;padding:8px 10px;"
+                    f"margin-bottom:8px;font-size:0.85em;background:#fafafa;'>"
                     f"<b>{ot['id_ot']}</b><br>{ot.get('equipo_id','—')}<br>"
-                    f"<span style='color:#888;'>{ot.get('prioridad','—')}</span></div>",
+                    f"<span style='color:{color};font-weight:600;'>{ot.get('prioridad','—')}</span></div>",
                     unsafe_allow_html=True,
                 )
+            if not ordenes_col:
+                st.caption("Sin OT en este estado.")
 
 with tab_tablero:
     filtro = st.selectbox("Filtrar por estado", ["TODAS"] + ESTADOS_OT)

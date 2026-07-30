@@ -83,18 +83,19 @@ cmms_streamlit/
 
 ## 4. Estado de la migración (checklist)
 
-| Módulo Apps Script | Servicio destino | Estado |
-|---|---|---|
-| `config.gs`, `database.gs` (parcial: `getConfig`) | `config/settings.py` | ✅ |
-| `activos.gs` | `services/activos_service.py` | ✅ completo |
-| `users.gs` | `services/users_service.py` | ✅ completo |
-| `ot_consulta.gs`, `ot_gestion.gs` | `services/ot_service.py` | ⏳ pendiente |
-| `pdf_generator.gs` | (parte de `ot_service.py`, con `reportlab`) | ⏳ pendiente |
-| `novedades_consulta.gs` | `services/novedades_service.py` | ⏳ pendiente |
-| `código.gs`, `admin_geestion.gs` (maquilas) | `services/maquilas_service.py` | ⏳ pendiente |
-| `admin_geestion.gs`, `adminLogic.gs`, `reportes.gs` | `services/admin_service.py` | ⏳ pendiente |
-| `drive.gs` (archivos/evidencias) | reemplazar por Google Cloud Storage | ⏳ pendiente (ver sección 6) |
-| `ids.gs` (generación de IDs tipo `EQ-001`) | utilidad en `utils/` | ⏳ pendiente |
+| Módulo | Estado |
+|---|---|
+| Login (correo / PIN rápido) | ✅ |
+| Dashboard con KPIs + accesos rápidos | ✅ |
+| Activos: explorar, consultar molde, crear, listar+buscar+editar en línea | ✅ |
+| Novedades: reportar, tablero, conversión directa a OT | ✅ |
+| Órdenes de Trabajo: tablero Kanban, lista+detalle, crear, cambiar estado | ✅ |
+| Maquilas: historial, registrar movimiento, dar de alta maquiladores | ✅ |
+| Admin: usuarios (CRUD), módulos on/off **+ visibilidad por rol** | ✅ |
+| Admin: explorador de base de datos (ver tablas + SQL de solo lectura) | ✅ |
+| Repuestos por OT, evidencias fotográficas, PDF de cierre | ⏳ pendiente |
+| Recarga de datos de `activos` (rota por los `#N/A` del Sheet original) | ⏳ pendiente |
+| Autenticación real con Google OAuth (hoy: correo por formulario) | ⏳ pendiente |
 
 ## 5. Decisiones de base de datos
 
