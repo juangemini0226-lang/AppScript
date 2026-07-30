@@ -11,7 +11,8 @@ import streamlit as st
 
 from services.admin_service import (
     list_usuarios, crear_usuario, actualizar_usuario, set_usuario_activo,
-    list_feature_flags, set_feature_flag, MODULOS_DISPONIBLES,
+    list_feature_flags, set_feature_flag, MODULOS_DISPONIBLES, ROLES_DISPONIBLES,
+    get_feature_flags_full, set_feature_flag_full,
     list_tables, get_table_preview, get_table_row_count, run_readonly_query,
 )
 
@@ -30,19 +31,34 @@ tab_modulos, tab_usuarios, tab_crear_usuario, tab_db = st.tabs(
 )
 
 with tab_modulos:
-    st.subheader("Prender / apagar módulos")
+    st.subheader("Prender / apagar módulos, y elegir quién los ve")
     st.caption(
-        "Estos interruptores controlan qué ve cada usuario en el menú "
-        "lateral, para TODA la app, al instante (con un refresh de su parte)."
+        "El interruptor prende/apaga el módulo para TODA la app. La lista "
+        "de roles debajo controla, además, quién lo ve aunque esté "
+        "prendido — por ejemplo, un TECNICO puede no necesitar ver Admin "
+        "ni Maquilas, aunque el módulo esté activo para Planeadores."
     )
-    flags = list_feature_flags()
+    flags_full = get_feature_flags_full()
     for modulo in MODULOS_DISPONIBLES:
         key = modulo["key"]
-        nuevo_valor = st.toggle(modulo["label"], value=flags.get(key, True), key=f"flag_{key}")
-        if nuevo_valor != flags.get(key, True):
-            set_feature_flag(key, nuevo_valor)
-            st.success(f"'{modulo['label']}' {'activado' if nuevo_valor else 'desactivado'}.")
+        info = flags_full.get(key, {"activo": True, "roles": ROLES_DISPONIBLES})
+
+        st.markdown(f"**{modulo['label']}**")
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            nuevo_activo = st.toggle("Activo", value=info["activo"], key=f"flag_{key}")
+        with col2:
+            nuevos_roles = st.multiselect(
+                "Visible para estos roles", ROLES_DISPONIBLES,
+                default=info["roles"], key=f"roles_{key}",
+                label_visibility="collapsed",
+            )
+
+        if nuevo_activo != info["activo"] or set(nuevos_roles) != set(info["roles"]):
+            set_feature_flag_full(key, nuevo_activo, nuevos_roles)
+            st.success(f"'{modulo['label']}' actualizado.")
             st.rerun()
+        st.divider()
 
 with tab_usuarios:
     st.subheader("Usuarios registrados")
