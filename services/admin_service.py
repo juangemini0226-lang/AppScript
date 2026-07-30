@@ -24,6 +24,8 @@ MODULOS_DISPONIBLES = [
     {"key": "maquilas", "label": "Maquilas"},
 ]
 
+ROLES_DISPONIBLES = ["TECNICO", "TECNICO_B", "TECNICO_MONTAJE", "PLANEADOR", "AUDITOR"]
+
 
 # ----------------------------------------------------------------------
 # USUARIOS
@@ -86,6 +88,48 @@ def set_feature_flag(feature_key: str, activo: bool) -> None:
 
 def is_feature_enabled(feature_key: str) -> bool:
     return list_feature_flags().get(feature_key, True)
+
+
+def get_feature_flags_full() -> dict[str, dict]:
+    """
+    Devuelve {key: {"activo": bool, "roles": [lista de roles permitidos]}}
+    para cada módulo del catálogo. Si un módulo no tiene fila todavía,
+    se asume activo=True y visible para todos los roles.
+    """
+    db = get_connector()
+    rows = db.fetch_all("feature_flags")
+    por_key = {r["feature_key"]: r for r in rows}
+
+    resultado = {}
+    for m in MODULOS_DISPONIBLES:
+        key = m["key"]
+        row = por_key.get(key)
+        if row:
+            roles_raw = (row.get("roles_permitidos") or "TODOS").strip()
+            roles = ROLES_DISPONIBLES if roles_raw == "TODOS" else \
+                [r.strip() for r in roles_raw.split(",") if r.strip()]
+            resultado[key] = {"activo": bool(row.get("activo", True)), "roles": roles}
+        else:
+            resultado[key] = {"activo": True, "roles": list(ROLES_DISPONIBLES)}
+    return resultado
+
+
+def set_feature_flag_full(feature_key: str, activo: bool, roles: list[str]) -> None:
+    """Guarda el interruptor global Y la lista de roles que pueden ver el módulo."""
+    db = get_connector()
+    roles_str = "TODOS" if set(roles) >= set(ROLES_DISPONIBLES) else ",".join(roles)
+    existente = db.fetch_one("feature_flags", where={"feature_key": feature_key})
+    data = {"activo": activo, "roles_permitidos": roles_str}
+    if existente:
+        db.update("feature_flags", where={"feature_key": feature_key}, data=data)
+    else:
+        db.insert("feature_flags", {"feature_key": feature_key, "descripcion": feature_key, **data})
+
+
+def is_module_visible_for_role(feature_key: str, rol: str) -> bool:
+    """Combina el interruptor global con la lista de roles permitidos."""
+    info = get_feature_flags_full().get(feature_key, {"activo": True, "roles": ROLES_DISPONIBLES})
+    return info["activo"] and (rol in info["roles"])
 
 
 # ----------------------------------------------------------------------
