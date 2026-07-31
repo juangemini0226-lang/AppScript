@@ -15,6 +15,7 @@ from services.admin_service import (
     get_feature_flags_full, set_feature_flag_full,
     list_tables, get_table_preview, get_table_row_count, run_readonly_query,
 )
+from services.activos_service import list_activos_todos, eliminar_activos_bulk, desactivar_activo
 from services.jerarquia_service import (
     list_nodos, crear_nodo, actualizar_nodo, desactivar_nodo, eliminar_nodo,
     list_tipos_activo, crear_tipo_activo, desactivar_tipo_activo,
@@ -31,8 +32,9 @@ if st.session_state["usuario"]["rol"] not in ("PLANEADOR", "AUDITOR"):
 
 st.title("⚙️ Administración")
 
-tab_modulos, tab_usuarios, tab_crear_usuario, tab_jerarquia, tab_db = st.tabs(
-    ["Módulos de la app", "Usuarios", "➕ Crear usuario", "🧬 Jerarquía ISO 14224", "🗄️ Explorador de base de datos"]
+tab_modulos, tab_usuarios, tab_crear_usuario, tab_jerarquia, tab_db, tab_activos_masivo = st.tabs(
+    ["Módulos de la app", "Usuarios", "➕ Crear usuario", "🧬 Jerarquía ISO 14224",
+     "🗄️ Explorador de base de datos", "🗑️ Gestión masiva de activos"]
 )
 
 with tab_modulos:
@@ -257,3 +259,72 @@ with tab_jerarquia:
             else:
                 resultado = crear_tipo_activo(nombre_tipo, clase_tipo, descripcion_tipo)
                 st.success(f"Tipo de activo creado: {resultado['nombre']}")
+
+with tab_activos_masivo:
+    st.subheader("🗑️ Gestión masiva de activos")
+    st.warning(
+        "Exclusivo de Admin. Útil para limpiar cargas de prueba o datos "
+        "erróneos. El borrado definitivo NO se puede deshacer — si solo "
+        "quieres que dejen de aparecer en los módulos, usa 'Desactivar "
+        "masivamente' en vez de eliminar."
+    )
+
+    busqueda_masiva = st.text_input("🔍 Filtrar por tag, nombre o ID (para achicar la lista)")
+    todos_los_activos = list_activos_todos(solo_activos=True)
+
+    if busqueda_masiva:
+        b = busqueda_masiva.lower()
+        todos_los_activos = [
+            a for a in todos_los_activos
+            if b in (a.get("nombre") or "").lower()
+            or b in (a.get("id_activo") or "").lower()
+            or b in (a.get("tag") or "").lower()
+        ]
+
+    st.caption(f"{len(todos_los_activos)} activo(s) coinciden con el filtro actual.")
+
+    seleccionar_todos = st.checkbox("Seleccionar TODOS los que coinciden con el filtro de arriba")
+
+    opciones = {
+        f"{(a.get('tag') or a['id_activo'])} — {a.get('nombre', '—')}": a["id_activo"]
+        for a in todos_los_activos
+    }
+
+    if seleccionar_todos:
+        seleccionados_labels = list(opciones.keys())
+        st.multiselect("Activos seleccionados", list(opciones.keys()),
+                         default=seleccionados_labels, key="ms_activos_todos", disabled=True)
+    else:
+        seleccionados_labels = st.multiselect("Selecciona los activos", list(opciones.keys()))
+
+    ids_seleccionados = [opciones[lbl] for lbl in seleccionados_labels]
+
+    if ids_seleccionados:
+        st.write(f"**{len(ids_seleccionados)} activo(s) seleccionado(s).**")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("🚫 Desactivar seleccionados (reversible)"):
+                for id_act in ids_seleccionados:
+                    desactivar_activo(id_act)
+                st.success(f"{len(ids_seleccionados)} activo(s) desactivado(s).")
+                st.rerun()
+
+        with col2:
+            if st.button("🗑️ Eliminar DEFINITIVAMENTE", type="primary"):
+                st.session_state["confirmar_borrado_masivo"] = True
+
+        if st.session_state.get("confirmar_borrado_masivo"):
+            st.error(
+                f"¿Seguro que quieres borrar DEFINITIVAMENTE estos "
+                f"{len(ids_seleccionados)} activo(s)? Esta acción no se puede deshacer."
+            )
+            c1, c2 = st.columns(2)
+            if c1.button("Sí, borrar definitivamente", key="confirm_bulk_delete_yes"):
+                total = eliminar_activos_bulk(ids_seleccionados)
+                del st.session_state["confirmar_borrado_masivo"]
+                st.success(f"{total} activo(s) eliminado(s) definitivamente.")
+                st.rerun()
+            if c2.button("Cancelar", key="confirm_bulk_delete_no"):
+                del st.session_state["confirmar_borrado_masivo"]
+                st.rerun()

@@ -76,6 +76,7 @@ with tab_crear:
         col1, col2 = st.columns(2)
         with col1:
             nombre = st.text_input("Nombre del activo *")
+            tag = st.text_input("Tag / código de planta (como lo llaman)")
             tipo = st.selectbox("Tipo *", ["PLANTA", "EQUIPO", "MOLDE"])
             fabricante = st.text_input("Fabricante")
         with col2:
@@ -95,7 +96,7 @@ with tab_crear:
         else:
             padre_id = padre.get("id") if isinstance(padre, dict) and "id" in padre else padre.get("id_activo")
             resultado = crear_activo({
-                "nombre": nombre, "tipo": tipo, "fabricante": fabricante or None,
+                "nombre": nombre, "tag": tag or None, "tipo": tipo, "fabricante": fabricante or None,
                 "ubicacion": ubicacion or None, "familia": familia or None,
                 "peso": peso or None, "padre_id": padre_id,
             })
@@ -130,6 +131,7 @@ with tab_csv:
 
             campos_sistema = [
                 ("nombre", "Nombre del activo *", True),
+                ("tag", "Tag / código con el que lo llaman en planta", False),
                 ("tipo", "Tipo (PLANTA/EQUIPO/MOLDE)", False),
                 ("tipoactivo", "Tipo de activo (ej: MOLDE, INYECTORA)", False),
                 ("fabricante", "Fabricante", False),
@@ -171,7 +173,7 @@ with tab_csv:
                         "nombre": str(fila[mapeo["nombre"]]).strip() if pd.notna(fila[mapeo["nombre"]]) else None,
                         "tipo": (str(fila[mapeo["tipo"]]).strip().upper() if mapeo.get("tipo") and pd.notna(fila[mapeo["tipo"]]) else tipo_fijo),
                     }
-                    for campo in ["tipoactivo", "fabricante", "ubicacion", "familia", "peso"]:
+                    for campo in ["tipoactivo", "fabricante", "ubicacion", "familia", "peso", "tag"]:
                         col = mapeo.get(campo)
                         valor = fila[col] if col and pd.notna(fila[col]) else None
                         if campo == "peso" and valor is not None:
@@ -199,32 +201,36 @@ with tab_csv:
 
 with tab_listado:
     st.subheader("Listado completo — edición rápida")
-    busqueda = st.text_input("🔍 Buscar por nombre o ID")
+    busqueda = st.text_input("🔍 Buscar por tag, nombre o ID")
 
     activos = list_activos_todos(solo_activos=True)
     if busqueda:
         b = busqueda.lower()
         activos = [a for a in activos if b in (a.get("nombre") or "").lower()
-                   or b in (a.get("id_activo") or "").lower()]
+                   or b in (a.get("id_activo") or "").lower()
+                   or b in (a.get("tag") or "").lower()]
 
     if not activos:
         st.info("No hay activos que coincidan.")
     else:
         st.caption(f"{len(activos)} resultado(s). Expande una fila para editarla.")
         for a in activos:
-            with st.expander(f"{a['id_activo']} — {a.get('nombre', '—')} ({a.get('tipo', '—')})"):
+            etiqueta_visible = a.get("tag") or a["id_activo"]
+            with st.expander(f"{etiqueta_visible} — {a.get('nombre', '—')} ({a.get('tipo', '—')})"):
                 col1, col2 = st.columns(2)
                 with col1:
+                    tag_e = st.text_input("Tag / código de planta", value=a.get("tag") or "", key=f"edtag_{a['id_activo']}")
                     nombre_e = st.text_input("Nombre", value=a.get("nombre", ""), key=f"edn_{a['id_activo']}")
                     ubicacion_e = st.text_input("Ubicación", value=a.get("ubicacion") or "", key=f"edu_{a['id_activo']}")
                 with col2:
                     fabricante_e = st.text_input("Fabricante", value=a.get("fabricante") or "", key=f"edf_{a['id_activo']}")
                     familia_e = st.text_input("Familia", value=a.get("familia") or "", key=f"edfam_{a['id_activo']}")
+                    st.caption(f"ID interno: `{a['id_activo']}` (no editable)")
 
                 bcol1, bcol2 = st.columns(2)
                 if bcol1.button("💾 Guardar cambios", key=f"save_{a['id_activo']}"):
                     actualizar_activo(a["id_activo"], {
-                        "nombre": nombre_e, "ubicacion": ubicacion_e or None,
+                        "tag": tag_e or None, "nombre": nombre_e, "ubicacion": ubicacion_e or None,
                         "fabricante": fabricante_e or None, "familia": familia_e or None,
                     })
                     st.success("Actualizado.")

@@ -101,7 +101,9 @@ def list_activos_todos(solo_activos: bool = True) -> list[dict]:
 def crear_activo(data: dict) -> dict:
     """
     data espera: nombre, tipo (PLANTA/EQUIPO/MOLDE), padre_id,
-    tipoactivo, fabricante, ubicacion, peso, familia.
+    tipoactivo, fabricante, ubicacion, peso, familia, tag.
+    `tag` es el identificador que usan en planta (ej: el código físico
+    de la etiqueta del molde) — separado del id_activo interno.
     """
     db = get_connector()
     prefijos = {"PLANTA": "PLT", "EQUIPO": "EQ", "MOLDE": "MOL"}
@@ -118,6 +120,7 @@ def crear_activo(data: dict) -> dict:
         "ubicacion": data.get("ubicacion"),
         "peso": data.get("peso"),
         "familia": data.get("familia"),
+        "tag": data.get("tag"),
     }
     return db.insert("activos", registro)
 
@@ -149,3 +152,22 @@ def actualizar_activo(id_activo: str, data: dict) -> int:
 def desactivar_activo(id_activo: str) -> int:
     db = get_connector()
     return db.update("activos", where={"id_activo": id_activo}, data={"activo": False})
+
+
+def eliminar_activo(id_activo: str) -> int:
+    """Borrado definitivo de un solo activo."""
+    db = get_connector()
+    return db.delete("activos", where={"id_activo": id_activo})
+
+
+def eliminar_activos_bulk(ids_activo: list[str]) -> int:
+    """
+    Borrado definitivo masivo. Exclusivo para Admin — se usa para
+    limpiar cargas de prueba o datos erróneos. Devuelve cuántos se
+    eliminaron en total.
+    """
+    db = get_connector()
+    total = 0
+    for id_activo in ids_activo:
+        total += db.delete("activos", where={"id_activo": id_activo})
+    return total
