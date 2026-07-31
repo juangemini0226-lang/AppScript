@@ -1,23 +1,13 @@
 -- =========================================================
--- CMMS FLA-EICE - ACTUALIZACIÓN DE SCHEMA (reconstrucción)
--- Corre esto una sola vez, ADEMÁS del schema.sql original.
+-- CMMS FLA-EICE - ACTUALIZACIÓN 2: visibilidad de módulos por rol
+-- Corre esto UNA vez, además de schema.sql y schema_updates.sql
 -- =========================================================
 
--- Controla qué módulos ve cada usuario, editable desde la página Admin.
-CREATE TABLE IF NOT EXISTS feature_flags (
-    feature_key VARCHAR(50) PRIMARY KEY,
-    activo BOOLEAN DEFAULT TRUE,
-    descripcion TEXT
-);
+ALTER TABLE feature_flags
+    ADD COLUMN IF NOT EXISTS roles_permitidos TEXT DEFAULT 'TODOS';
 
--- Semilla inicial: todos los módulos encendidos por defecto.
-INSERT INTO feature_flags (feature_key, activo, descripcion) VALUES
-    ('activos', TRUE, 'Módulo de Activos'),
-    ('ordenes_trabajo', TRUE, 'Módulo de Órdenes de Trabajo'),
-    ('novedades', TRUE, 'Módulo de Novedades'),
-    ('maquilas', TRUE, 'Módulo de Maquilas')
-ON CONFLICT (feature_key) DO NOTHING;
+-- Deja explícito que, por defecto, todos los módulos existentes
+-- siguen siendo visibles para todos los roles (comportamiento actual).
+UPDATE feature_flags SET roles_permitidos = 'TODOS' WHERE roles_permitidos IS NULL;
 
--- Otorga permisos al usuario de aplicación (ajusta "Admin" si tu
--- usuario de base de datos tiene otro nombre).
 GRANT ALL PRIVILEGES ON TABLE feature_flags TO "Admin";

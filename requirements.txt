@@ -1,9 +1,23 @@
-streamlit>=1.38
-sqlalchemy>=2.0
-cloud-sql-python-connector[pg8000]>=1.10
-pg8000>=1.31
-pandas>=2.2
-openpyxl>=3.1          # necesario para leer/escribir archivos .xlsx (plantilla de ubicaciones)
-gspread>=6.1          # solo necesario para db/migrate_from_sheets.py (lectura del Sheet origen)
-google-auth>=2.34     # idem
-python-dateutil>=2.9
+# CMMS FLA-EICE — Línea 3 Envasado (Streamlit + Google Cloud SQL)
+
+Migración del CMMS original (Google Apps Script + Google Sheets) a
+Streamlit + PostgreSQL en Google Cloud, manteniendo las mismas
+funcionalidades.
+
+- **Documentación completa de arquitectura y estado de la migración:**
+  ver [`DOCUMENTATION.md`](./DOCUMENTATION.md).
+- **Instrucciones detalladas para continuar el desarrollo (para otra
+  IA o para ti mismo en otra sesión):** ver [`NEXT_STEPS.md`](./NEXT_STEPS.md).
+
+## Arranque rápido
+
+```bash
+pip install -r requirements.txt
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # y completa tus credenciales
+streamlit run app.py
+```
+
+## Estructura
+
+Ver el árbol completo y la explicación de cada carpeta en
+`DOCUMENTATION.md`, sección 3.

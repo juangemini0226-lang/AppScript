@@ -1,87 +1,45 @@
 """
-db/base.py
-==========
-Contrato de acceso a datos del CMMS.
+db/factory.py
+=============
+Punto ÚNICO donde se decide qué motor de base de datos se está usando.
 
-POR QUÉ EXISTE ESTE ARCHIVO
-----------------------------
-Hoy la base es Google Cloud SQL (PostgreSQL). Mañana podría ser Firestore,
-BigQuery, otro proveedor (AWS/Azure) o incluso volver a Sheets para pruebas.
+Cuando migres de motor en el futuro (ej: Cloud SQL -> Firestore, o
+Cloud SQL -> otro proveedor), este es el ÚNICO archivo que cambia.
+`services/*` y las páginas de Streamlit siguen llamando a
+`get_connector()` sin saber qué hay detrás.
 
-Para que ese cambio NO obligue a tocar los `services/*` (la lógica de
-negocio: activos, OT, novedades, maquilas, etc.), todo el resto del sistema
-habla exclusivamente con esta interfaz (`DBConnector`), nunca con SQLAlchemy,
-psycopg2 o el SDK de Google directamente.
-
-Regla de oro del proyecto:
-    services/*  -->  habla con DBConnector (esta clase)
-    db/*        -->  implementa DBConnector para un motor concreto
-
-Si el día de mañana migras de Cloud SQL a Firestore, solo se crea
-`db/firestore_connector.py` que implemente esta misma interfaz y se cambia
-UNA línea en `db/factory.py`. Nada más se toca.
+Uso:
+    from db.factory import get_connector
+    db = get_connector()
+    activos = db.fetch_all("activos", where={"activo": True})
 """
 
-from abc import ABC, abstractmethod
-from typing import Any, Optional
+from functools import lru_cache
+
+from config.settings import get_settings
+from db.base import DBConnector
 
 
-class DBConnector(ABC):
-    """Contrato mínimo que cualquier backend de datos debe implementar."""
+@lru_cache(maxsize=1)
+def get_connector() -> DBConnector:
+    settings = get_settings()
+    engine = settings.get("db_engine", "gcp_cloudsql")
 
-    # ------------------------------------------------------------------
-    # Ciclo de vida de la conexión
-    # ------------------------------------------------------------------
-    @abstractmethod
-    def connect(self) -> None:
-        """Abre la conexión / pool de conexiones."""
-        raise NotImplementedError
+    if engine == "gcp_cloudsql":
+        from db.gcp_connector import GCPCloudSQLConnector
+        connector = GCPCloudSQLConnector(settings["gcp_cloudsql"])
 
-    @abstractmethod
-    def close(self) -> None:
-        """Cierra la conexión / pool de conexiones."""
-        raise NotImplementedError
+    # --- Espacio reservado para futuros motores ---
+    # elif engine == "firestore":
+    #     from db.firestore_connector import FirestoreConnector
+    #     connector = FirestoreConnector(settings["firestore"])
+    #
+    # elif engine == "bigquery":
+    #     from db.bigquery_connector import BigQueryConnector
+    #     connector = BigQueryConnector(settings["bigquery"])
 
-    # ------------------------------------------------------------------
-    # Operaciones genéricas (equivalentes a lo que hacía Apps Script
-    # leyendo/escribiendo filas de un Sheet)
-    # ------------------------------------------------------------------
-    @abstractmethod
-    def fetch_all(self, table: str, where: Optional[dict] = None,
-                   order_by: Optional[str] = None,
-                   limit: Optional[int] = None) -> list[dict]:
-        """
-        Devuelve una lista de dicts (equivalente a getDataRange().getValues()
-        ya convertido a objetos, como hacían los .gs).
+    else:
+        raise ValueError(f"Motor de base de datos no soportado: {engine}")
 
-        where: dict simple de igualdad, ej: {"activo": True, "tipo": "EQUIPO"}
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def fetch_one(self, table: str, where: dict) -> Optional[dict]:
-        raise NotImplementedError
-
-    @abstractmethod
-    def insert(self, table: str, data: dict) -> Any:
-        """Inserta un registro. Devuelve el id generado o insertado."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def update(self, table: str, where: dict, data: dict) -> int:
-        """Actualiza registros que cumplan `where`. Devuelve filas afectadas."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def delete(self, table: str, where: dict) -> int:
-        raise NotImplementedError
-
-    @abstractmethod
-    def execute_raw(self, query: str, params: Optional[dict] = None) -> list[dict]:
-        """
-        Escape hatch para consultas complejas (joins, agregaciones) que no
-        valen la pena modelar en los métodos genéricos de arriba.
-        Úsalo con moderación: cada uso aquí es código que NO es portable
-        entre motores.
-        """
-        raise NotImplementedError
+    connector.connect()
+    return connector

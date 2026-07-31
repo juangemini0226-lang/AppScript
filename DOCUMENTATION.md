@@ -1,146 +1,189 @@
-# CMMS FLA-EICE — Documentación técnica
+"""
+app.py
+======
+Entrada principal. Navegación dinámica (rol + módulos activos) +
+dashboard de inicio con indicadores reales y atajos de creación rápida.
+"""
 
-Sistema de mantenimiento (CMMS) de la Línea 3 de Envasado, FLA-EICE.
-Este documento explica **qué es cada cosa, por qué está diseñada así, y
-qué falta**, pensado para que cualquier persona (o IA) que retome el
-proyecto no tenga que releer el Apps Script original desde cero.
+import streamlit as st
 
-## 1. De dónde viene esto
+from services.users_service import get_current_user, validar_login_por_pin_rapido
+from services.admin_service import is_module_visible_for_role
+from services.dashboard_service import get_kpis
 
-El sistema original vivía 100% en Google Apps Script:
-- **Backend**: 14 archivos `.gs` (config, database, activos, users, OT,
-  novedades, maquilas, PDF, admin, reportes...) operando directamente
-  sobre un Google Sheet con 25 hojas.
-- **Frontend**: 4 archivos `.html` (`ui.html`, `admin.html`,
-  `maquilas.html`, `parametrización.html`) servidos como web app de
-  Apps Script.
+st.set_page_config(
+    page_title="CMMS FLA-EICE · Línea 3 Envasado",
+    page_icon="🛠️",
+    layout="wide",
+)
 
-El Sheet (`CMMS_DB.xlsx` en este repo es una copia de su estructura)
-tiene estas 25 tablas: `USUARIOS, CONFIG, ACTIVOS, JERARQUIA_TECNICA,
-AVERIAS, SOLUCIONES_AVERIA, NOVEDADES, NOV_DETALLE, NOV_EVIDENCIAS,
-CAUSAS_FALLA, OT, OT_TIEMPOS, OT_REPUESTOS, OT_EVIDENCIAS, REPUESTOS,
-PARAM_CHEQUEOS, PARAM_VERSIONES, HISTORIAL_VERSIONES, DOCS,
-MAQUILADORES, MAQUILAS, Nodisponibles, ALISTAMIENTO, MONTAJES,
-TAREAS_PROGRAMADAS`.
+st.markdown("""
+<style>
+    div[data-testid="stMetric"] {
+        background-color: #f8f9fb;
+        border: 1px solid #e6e6e6;
+        border-radius: 10px;
+        padding: 14px 16px;
+    }
+    div[data-testid="stMetricValue"] { font-size: 1.8rem; }
+    .stTabs [data-baseweb="tab-list"] { gap: 4px; }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px 8px 0 0;
+        padding: 8px 16px;
+    }
+    div[data-testid="stExpander"] {
+        border: 1px solid #e6e6e6;
+        border-radius: 10px;
+    }
+    button[kind="primary"], button[kind="secondary"] {
+        border-radius: 8px;
+    }
+    section[data-testid="stSidebar"] {
+        border-right: 1px solid #eee;
+    }
 
-## 2. Arquitectura nueva
+    /* ---- Responsive / móvil ---- */
+    @media (max-width: 640px) {
+        div[data-testid="stMetric"] { padding: 10px 12px; }
+        div[data-testid="stMetricValue"] { font-size: 1.3rem; }
+        h1 { font-size: 1.5rem !important; }
+        h2 { font-size: 1.2rem !important; }
+        .block-container { padding-left: 1rem; padding-right: 1rem; }
+        div[data-testid="column"] { min-width: 100% !important; }
+    }
+    /* Streamlit ya colapsa el sidebar en pantallas angostas a un menú
+       hamburguesa; esto solo pule tamaños y espaciados para que se vea
+       bien una vez abierto en el celular. */
+    section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] p {
+        font-size: 0.95rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-```
-Streamlit (UI)  →  services/*.py (lógica de negocio)  →  db/factory.py
-                                                              │
-                                                    DBConnector (interfaz)
-                                                              │
-                                                  db/gcp_connector.py
-                                                  (Cloud SQL / PostgreSQL)
-```
 
-**Regla de oro**: `services/*` y las páginas de Streamlit **nunca**
-importan `sqlalchemy`, `psycopg2` ni nada de Google Cloud directamente.
-Solo hablan con `db.factory.get_connector()`, que devuelve un objeto que
-cumple la interfaz `DBConnector` (`db/base.py`).
+def _login_form():
+    st.title("🛠️ CMMS · FLA-EICE")
+    st.caption("Línea 3 - Envasado · Mantenimiento")
 
-### Por qué esta capa de abstracción (lo que pediste explícitamente)
+    tab_email, tab_pin = st.tabs(["Correo corporativo", "PIN rápido (planta)"])
 
-Hoy el destino es **Google Cloud SQL (PostgreSQL)**. Es la elección
-razonable porque los datos son fuertemente relacionales (una OT tiene
-tiempos, repuestos y evidencias asociadas por `OT_ID`; una novedad se
-liga a equipo→sistema→subsistema→ítem). Pero si en el futuro decides
-migrar (por costo, por escalar a otra nube, por pasar a Firestore para
-las evidencias/fotos, etc.), el cambio se reduce a:
+    with tab_email:
+        with st.form("login_email"):
+            email = st.text_input("Correo @estra.com.co")
+            enviar = st.form_submit_button("Entrar")
+        if enviar:
+            try:
+                st.session_state["usuario"] = get_current_user(email)
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
 
-1. Crear `db/nuevo_motor_connector.py` implementando `DBConnector`.
-2. Cambiar una línea en `db/factory.py`.
+    with tab_pin:
+        with st.form("login_pin"):
+            pin = st.text_input("PIN", type="password", max_chars=4)
+            enviar_pin = st.form_submit_button("Entrar")
+        if enviar_pin:
+            try:
+                st.session_state["usuario"] = validar_login_por_pin_rapido(pin)
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
 
-Nada en `services/` ni en `pages/` se toca. Esa es la razón de ser de
-`db/base.py`.
 
-## 3. Estructura del repo
+def _home_page():
+    usuario = st.session_state["usuario"]
+    st.title("Panel CMMS - Línea 3 Envasado")
+    st.caption(f"Bienvenido, **{usuario['nombre']}** · Rol: {usuario['rol']}")
 
-```
-cmms_streamlit/
-├── app.py                     # Entrada Streamlit + login
-├── requirements.txt
-├── .streamlit/
-│   └── secrets.toml.example   # plantilla de credenciales (NO subir la real)
-├── config/
-│   └── settings.py            # lee st.secrets y lo normaliza a dict
-├── db/
-│   ├── base.py                # interfaz DBConnector (el contrato)
-│   ├── factory.py             # decide qué conector instanciar
-│   ├── gcp_connector.py        # implementación Cloud SQL / PostgreSQL
-│   ├── schema.sql             # DDL de las 25 tablas (generado desde el Excel real)
-│   └── migrate_from_sheets.py # script de migración Sheet -> Cloud SQL (una vez)
-├── services/
-│   ├── activos_service.py     # ✅ migrado completo (desde activos.gs)
-│   └── users_service.py       # ✅ migrado completo (desde users.gs)
-└── pages/
-    ├── 1_Activos.py           # ✅ funcional end-to-end
-    ├── 2_Ordenes_de_Trabajo.py# ⏳ placeholder, con plan de migración en docstring
-    ├── 3_Novedades.py         # ⏳ placeholder
-    ├── 4_Maquilas.py          # ⏳ placeholder
-    └── 5_Admin.py             # ⏳ placeholder
-```
+    try:
+        kpis = get_kpis()
+    except Exception:
+        kpis = None
 
-## 4. Estado de la migración (checklist)
+    if kpis:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Activos registrados", kpis["activos_total"])
+        c2.metric("OT abiertas", kpis["ot_abiertas"])
+        c3.metric("OT alta prioridad", kpis["ot_alta_prioridad"], delta=None,
+                   delta_color="inverse" if kpis["ot_alta_prioridad"] > 0 else "normal")
+        c4.metric("Novedades pendientes", kpis["novedades_pendientes"])
 
-| Módulo | Estado |
-|---|---|
-| Login (correo / PIN rápido) | ✅ |
-| Dashboard con KPIs + accesos rápidos | ✅ |
-| Activos: explorar, consultar molde, crear, listar+buscar+editar en línea | ✅ |
-| Novedades: reportar, tablero, conversión directa a OT | ✅ |
-| Órdenes de Trabajo: tablero Kanban, lista+detalle, crear, cambiar estado | ✅ |
-| Maquilas: historial, registrar movimiento, dar de alta maquiladores | ✅ |
-| Admin: usuarios (CRUD), módulos on/off **+ visibilidad por rol** | ✅ |
-| Admin: explorador de base de datos (ver tablas + SQL de solo lectura) | ✅ |
-| Repuestos por OT, evidencias fotográficas, PDF de cierre | ⏳ pendiente |
-| Recarga de datos de `activos` (rota por los `#N/A` del Sheet original) | ⏳ pendiente |
-| Autenticación real con Google OAuth (hoy: correo por formulario) | ⏳ pendiente |
+    st.divider()
+    st.subheader("⚡ Accesos rápidos")
 
-## 5. Decisiones de base de datos
+    col1, col2, col3 = st.columns(3)
 
-- **Motor**: PostgreSQL en Cloud SQL. Alternativas consideradas y por
-  qué no: Firestore (NoSQL) complica los joins que ya existían de forma
-  natural en el Sheet (OT↔tiempos↔repuestos↔evidencias); BigQuery es
-  para analítica, no para un sistema transaccional con formularios.
-- **Tipos de columna** (`db/schema.sql`): los `ID_*` se dejaron como
-  `VARCHAR(50)` porque hoy son códigos manuales (`EQ-001`, `MOLDE-014`),
-  no autoincrementales. Si más adelante decides normalizar a
-  `SERIAL`/`UUID`, es un cambio localizado en `schema.sql` +
-  `migrate_from_sheets.py`.
-- **Conexión**: se usa el *Cloud SQL Python Connector* (no una IP +
-  contraseña sueltas) porque maneja TLS y rotación de certificados
-  automáticamente, y funciona igual de bien desde Streamlit Community
-  Cloud, Cloud Run o un Codespace de GitHub.
+    with col1:
+        with st.expander("📋 Reportar novedad rápida"):
+            with st.form("home_reportar_novedad", clear_on_submit=True):
+                desc = st.text_area("Descripción de la falla *", key="home_nov_desc")
+                prioridad = st.selectbox("Prioridad", ["BAJA", "MEDIA", "ALTA"], index=1, key="home_nov_prio")
+                enviar = st.form_submit_button("Reportar")
+            if enviar and desc:
+                from services.novedades_service import crear_novedad
+                res = crear_novedad({"descripcion": desc, "prioridad": prioridad}, creado_por=usuario["email"])
+                st.success(f"Novedad reportada: {res['id_nov']}")
 
-## 6. Pendientes fuera de la base de datos
+    with col2:
+        with st.expander("🏭 Crear activo rápido"):
+            with st.form("home_crear_activo", clear_on_submit=True):
+                nombre = st.text_input("Nombre *", key="home_act_nombre")
+                tipo = st.selectbox("Tipo", ["MOLDE", "EQUIPO", "PLANTA"], key="home_act_tipo")
+                enviar = st.form_submit_button("Crear")
+            if enviar and nombre:
+                from services.activos_service import crear_activo
+                res = crear_activo({"nombre": nombre, "tipo": tipo})
+                st.success(f"Activo creado: {res['id_activo']}")
 
-1. **Archivos/evidencias** (fotos de novedades y OT, PDFs de OT,
-   documentos): el original usaba `DriveApp`. La opción natural en GCP
-   es **Google Cloud Storage** (un bucket, URLs firmadas). Falta un
-   `storage/gcs_connector.py` con la misma filosofía de abstracción
-   que `db/`.
-2. **Autenticación real**: hoy `get_current_user()` recibe el email por
-   formulario. Para producción conviene integrar **Google OAuth** (o
-   Identity-Aware Proxy si se despliega en Cloud Run) para que el login
-   sea automático como en Apps Script.
-3. **Generación de PDF** (`pdf_generator.gs`): portar a `reportlab` o
-   `WeasyPrint`.
-4. **Envío de correos** (scopes de Gmail en `appscript.json`): usar
-   `smtplib` con una cuenta de servicio SMTP, o la API de Gmail si se
-   necesita mantener el remitente corporativo.
+    with col3:
+        with st.expander("🛠️ Ver mis módulos"):
+            st.write("Usa el menú de la izquierda para navegar entre los módulos disponibles para tu rol.")
+            if usuario["rol"] in ("PLANEADOR", "AUDITOR"):
+                st.caption("Como administrador, puedes prender/apagar módulos en **Admin → Módulos de la app**.")
 
-## 7. Cómo desplegar (sin entorno local, todo desde GitHub)
 
-1. Sube este repo a GitHub.
-2. Crea la instancia de Cloud SQL (PostgreSQL) desde la consola de GCP
-   o Cloud Shell — no requiere nada local.
-3. Corre `db/schema.sql` contra la instancia (desde Cloud Shell con
-   `psql`, o desde un Codespace).
-4. Corre `db/migrate_from_sheets.py` una vez para volcar los datos
-   actuales del Sheet (ver instrucciones en el propio archivo).
-5. Despliega en **Streamlit Community Cloud** apuntando a este repo de
-   GitHub; pega el contenido de `.streamlit/secrets.toml.example`
-   (con tus valores reales) en Settings → Secrets.
-6. Verifica que `pages/1_Activos.py` carga datos reales — es el módulo
-   ya migrado que sirve de prueba de humo de toda la arquitectura.
+def _build_navigation():
+    usuario = st.session_state["usuario"]
+    rol = usuario["rol"]
+
+    home = st.Page(_home_page, title="Inicio", icon="🏠", default=True)
+    pages = [home]
+
+    if is_module_visible_for_role("activos", rol):
+        pages.append(st.Page("app_pages/activos.py", title="Activos", icon="🏭"))
+    if is_module_visible_for_role("ordenes_trabajo", rol):
+        pages.append(st.Page("app_pages/ordenes_trabajo.py", title="Órdenes de Trabajo", icon="🛠️"))
+    if is_module_visible_for_role("novedades", rol):
+        pages.append(st.Page("app_pages/novedades.py", title="Novedades", icon="📋"))
+    if is_module_visible_for_role("maquilas", rol):
+        pages.append(st.Page("app_pages/maquilas.py", title="Maquilas", icon="🏗️"))
+    if is_module_visible_for_role("mapa_planta", rol):
+        pages.append(st.Page("app_pages/mapa_planta.py", title="Mapa de planta", icon="🗺️"))
+
+    if rol in ("PLANEADOR", "AUDITOR"):
+        pages.append(st.Page("app_pages/admin.py", title="Admin", icon="⚙️"))
+
+    return st.navigation(pages)
+
+
+def main():
+    if "usuario" not in st.session_state:
+        _login_form()
+        return
+
+    usuario = st.session_state["usuario"]
+
+    with st.sidebar:
+        st.markdown(f"### 👤 {usuario['nombre']}")
+        st.caption(f"Rol: **{usuario['rol']}**")
+        st.divider()
+        if st.button("🚪 Cerrar sesión", use_container_width=True):
+            del st.session_state["usuario"]
+            st.rerun()
+
+    nav = _build_navigation()
+    nav.run()
+
+
+if __name__ == "__main__":
+    main()

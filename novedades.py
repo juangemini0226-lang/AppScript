@@ -1,126 +1,145 @@
 """
-app_pages/mapa_planta.py
-==========================
-Mapa 2D de planta para ubicar visualmente activos (moldes, equipos).
-
-ALCANCE DE ESTA PRIMERA VERSIÓN (léelo antes de esperar drag&drop):
-Streamlit no soporta arrastrar-y-soltar de forma nativa — se necesitaría
-un componente personalizado en JavaScript para eso (posible, pero es
-un desarrollo aparte, no algo que se arma en una función de servicio).
-
-Lo que SÍ hace esta versión: cada activo tiene una posición (X, Y) en
-porcentaje (0-100) sobre un lienzo rectangular que representa la
-planta. La ubicas escribiendo o ajustando los números con un slider, y
-el mapa se dibuja como SVG con un punto y una etiqueta por activo. Es
-"clic para ubicar" en vez de "arrastrar", pero cumple el objetivo de
-ver de un vistazo dónde está cada molde/equipo en la planta.
-
-Si más adelante quieres arrastrar de verdad, es una mejora de una sola
-pieza (un componente HTML/JS que reporte la posición del mouse) sin
-tocar el resto de la arquitectura.
+app_pages/ordenes_trabajo.py
+==============================
+Creación de OT (directa o desde una novedad) y tablero de "trabajos en
+curso" — lo que el usuario pidió como control de piso de mantenimiento.
 """
 
 import streamlit as st
 
-from services.activos_service import list_activos_todos, actualizar_activo
+from services.ot_service import crear_ot, list_ot, cambiar_estado_ot, get_tiempos_ot, ESTADOS_OT
+from services.dashboard_service import get_ot_por_estado
+from services.novedades_service import list_novedades
+from services.activos_service import get_equipos, get_sistemas_simple, get_subsistemas_simple, get_items_simple
+from services.users_service import get_tecnicos_simple
 
 if "usuario" not in st.session_state:
     st.warning("Inicia sesión desde la página principal.")
     st.stop()
 
-st.title("🗺️ Mapa de planta")
+usuario = st.session_state["usuario"]
 
-tab_mapa, tab_ubicar = st.tabs(["Ver mapa", "📍 Ubicar activo"])
+st.title("🛠️ Órdenes de Trabajo")
 
-activos = list_activos_todos(solo_activos=True)
-activos_con_pos = [a for a in activos if a.get("pos_x") is not None and a.get("pos_y") is not None]
+tab_kanban, tab_tablero, tab_crear = st.tabs(["📊 Tablero Kanban", "Lista y detalle", "➕ Crear OT"])
 
-with tab_mapa:
-    if not activos_con_pos:
-        st.info(
-            "Todavía no hay activos con posición asignada. Ve a la pestaña "
-            "'📍 Ubicar activo' para empezar a colocarlos en el mapa."
-        )
-    else:
-        ancho, alto = 900, 500
-        puntos_svg = ""
-        for a in activos_con_pos:
-            x = float(a["pos_x"]) / 100 * ancho
-            y = float(a["pos_y"]) / 100 * alto
-            ubicacion_tooltip = (a.get("ubicacion") or "Sin descripción de ubicación").replace('"', "'")
-            puntos_svg += f"""
-                <g>
-                    <title>{a['nombre']} — {ubicacion_tooltip}</title>
-                    <circle cx="{x}" cy="{y}" r="9" fill="#e74c3c" stroke="white" stroke-width="2" />
-                    <text x="{x + 12}" y="{y + 4}" font-size="12" fill="#333">{a['nombre']}</text>
-                </g>
-            """
-
-        svg = f"""
-        <svg width="100%" viewBox="0 0 {ancho} {alto}" style="background:#f4f4f4;border:1px solid #ddd;border-radius:8px;">
-            <defs>
-                <pattern id="grid" width="45" height="45" patternUnits="userSpaceOnUse">
-                    <path d="M 45 0 L 0 0 0 45" fill="none" stroke="#e0e0e0" stroke-width="1"/>
-                </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-            {puntos_svg}
-        </svg>
-        """
-        st.markdown(svg, unsafe_allow_html=True)
-        st.caption(f"{len(activos_con_pos)} activo(s) ubicados en el mapa. Pasa el mouse sobre un punto para ver su ubicación.")
-
-        with st.expander("📋 Ver lista de ubicaciones"):
-            tabla = [{"Activo": a["nombre"], "ID": a["id_activo"],
-                       "Ubicación física": a.get("ubicacion") or "—"} for a in activos_con_pos]
-            st.dataframe(tabla, use_container_width=True, hide_index=True)
-
-with tab_ubicar:
-    st.write("Elige un activo y define dónde está: descripción de ubicación física + posición en el plano.")
-    if not activos:
-        st.info("No hay activos registrados todavía.")
-    else:
-        busqueda_ubicar = st.text_input("🔍 Buscar activo por nombre o ID", key="busq_ubicar")
-        activos_filtrados = activos
-        if busqueda_ubicar:
-            b = busqueda_ubicar.lower()
-            activos_filtrados = [a for a in activos if b in (a.get("nombre") or "").lower()
-                                   or b in (a.get("id_activo") or "").lower()]
-
-        if not activos_filtrados:
-            st.warning("No hay activos que coincidan con la búsqueda.")
-        else:
-            activo_sel = st.selectbox("Activo", activos_filtrados,
-                                        format_func=lambda a: f"{a.get('nombre', '—')} ({a.get('id_activo', '—')})")
-            if activo_sel:
-                ubicacion_texto = st.text_input(
-                    "📍 Ubicación física (descripción, ej: 'H75-H82 Fila 3 - Puesto 3')",
-                    value=activo_sel.get("ubicacion") or "",
+with tab_kanban:
+    conteos = get_ot_por_estado()
+    colores_prioridad = {"ALTA": "#e74c3c", "MEDIA": "#f39c12", "BAJA": "#27ae60"}
+    cols = st.columns(len(ESTADOS_OT))
+    for col, estado in zip(cols, ESTADOS_OT):
+        with col:
+            st.metric(estado.replace("_", " "), conteos.get(estado, 0))
+            ordenes_col = list_ot(estado=estado, limit=10)
+            for ot in ordenes_col:
+                color = colores_prioridad.get(ot.get("prioridad"), "#bbb")
+                st.markdown(
+                    f"<div style='border-left:4px solid {color};border:1px solid #e6e6e6;"
+                    f"border-left-width:4px;border-radius:8px;padding:8px 10px;"
+                    f"margin-bottom:8px;font-size:0.85em;background:#fafafa;'>"
+                    f"<b>{ot['id_ot']}</b><br>{ot.get('equipo_id','—')}<br>"
+                    f"<span style='color:{color};font-weight:600;'>{ot.get('prioridad','—')}</span></div>",
+                    unsafe_allow_html=True,
                 )
+            if not ordenes_col:
+                st.caption("Sin OT en este estado.")
 
-                col1, col2 = st.columns(2)
+with tab_tablero:
+    filtro = st.selectbox("Filtrar por estado", ["TODAS"] + ESTADOS_OT)
+    ordenes = list_ot(estado=None if filtro == "TODAS" else filtro)
+
+    if not ordenes:
+        st.info("No hay órdenes de trabajo con ese filtro.")
+    else:
+        for ot in ordenes:
+            with st.expander(f"{ot['id_ot']} · {ot.get('equipo_id', '—')} · {ot.get('estado', '—')}"):
+                st.write(f"**Prioridad:** {ot.get('prioridad', '—')}")
+                st.write(f"**Descripción:** {ot.get('descripcion_solicitud', '—')}")
+                st.write(f"**Fecha:** {ot.get('fecha', '—')}")
+
+                tiempos = get_tiempos_ot(ot["id_ot"])
+                if tiempos:
+                    st.caption("Historial de avance:")
+                    for t in tiempos:
+                        st.markdown(f"- `{t['creado_en']}` — {t['comentario']} ({t['minutos']} min)")
+
+                st.divider()
+                st.caption("Registrar avance / cambiar estado")
+                tecnicos = get_tecnicos_simple()
+                col1, col2, col3 = st.columns([2, 1, 1])
                 with col1:
-                    nuevo_x = st.slider("Posición horizontal en el mapa (X)", 0, 100,
-                                          int(activo_sel.get("pos_x") or 50))
+                    comentario = st.text_input("Comentario", key=f"com_{ot['id_ot']}")
                 with col2:
-                    nuevo_y = st.slider("Posición vertical en el mapa (Y)", 0, 100,
-                                          int(activo_sel.get("pos_y") or 50))
+                    nuevo_estado = st.selectbox("Nuevo estado", ESTADOS_OT,
+                                                  index=ESTADOS_OT.index(ot.get("estado", "PROGRAMADA"))
+                                                  if ot.get("estado") in ESTADOS_OT else 0,
+                                                  key=f"est_{ot['id_ot']}")
+                with col3:
+                    minutos = st.number_input("Minutos", min_value=0, step=5, key=f"min_{ot['id_ot']}")
 
-                # Vista previa en vivo mientras ajustas
-                ancho, alto = 900, 300
-                x_prev = nuevo_x / 100 * ancho
-                y_prev = nuevo_y / 100 * alto
-                st.markdown(f"""
-                <svg width="100%" viewBox="0 0 {ancho} {alto}" style="background:#f4f4f4;border:1px solid #ddd;border-radius:8px;">
-                    <circle cx="{x_prev}" cy="{y_prev}" r="10" fill="#3498db" stroke="white" stroke-width="2" />
-                    <text x="{x_prev + 14}" y="{y_prev + 4}" font-size="12" fill="#333">{activo_sel.get('nombre', '')}</text>
-                </svg>
-                """, unsafe_allow_html=True)
+                tecnico_sel = st.selectbox("Técnico", tecnicos, format_func=lambda t: t["nombre"],
+                                             key=f"tec_{ot['id_ot']}") if tecnicos else None
 
-                if st.button("💾 Guardar ubicación"):
-                    actualizar_activo(activo_sel["id_activo"], {
-                        "ubicacion": ubicacion_texto or None,
-                        "pos_x": nuevo_x, "pos_y": nuevo_y,
-                    })
-                    st.success(f"Ubicación guardada para {activo_sel['nombre']}.")
+                if st.button("Guardar avance", key=f"btn_{ot['id_ot']}"):
+                    cambiar_estado_ot(
+                        ot["id_ot"], nuevo_estado,
+                        tecnico_id=tecnico_sel["id"] if tecnico_sel else usuario["email"],
+                        minutos=minutos, comentario=comentario or "(sin comentario)",
+                    )
+                    st.success("Avance registrado.")
                     st.rerun()
+
+with tab_crear:
+    st.subheader("Crear una orden de trabajo")
+
+    origen = st.radio("Origen", ["Directa", "Desde una novedad"])
+    novedad_sel = None
+    if origen == "Desde una novedad":
+        novedades_pendientes = list_novedades(estado="ASIGNADA")
+        if novedades_pendientes:
+            novedad_sel = st.selectbox(
+                "Novedad", novedades_pendientes,
+                format_func=lambda n: f"{n['id_nov']} — {n.get('descripcion', '')[:60]}"
+            )
+        else:
+            st.info("No hay novedades pendientes de convertir en OT.")
+
+    equipos = get_equipos()
+    equipo = st.selectbox("Equipo", equipos, format_func=lambda e: e["nombre"]) if equipos else None
+    sistema = subsistema = item = None
+    if equipo:
+        sistemas = get_sistemas_simple(equipo["id"])
+        sistema = st.selectbox("Sistema", sistemas, format_func=lambda s: s["nombre"]) if sistemas else None
+    if sistema:
+        subsistemas = get_subsistemas_simple(sistema["id"])
+        subsistema = st.selectbox("Subsistema", subsistemas, format_func=lambda s: s["nombre"]) if subsistemas else None
+    if subsistema:
+        items = get_items_simple(subsistema["id"])
+        item = st.selectbox("Ítem", items, format_func=lambda i: i["nombre"]) if items else None
+
+    with st.form("crear_ot_form", clear_on_submit=True):
+        tecnicos = get_tecnicos_simple()
+        tecnico = st.selectbox("Técnico asignado", tecnicos, format_func=lambda t: t["nombre"]) if tecnicos else None
+        descripcion = st.text_area("Descripción de la solicitud *")
+        prioridad = st.selectbox("Prioridad", ["BAJA", "MEDIA", "ALTA"], index=1)
+        tipo_actividad = st.selectbox("Tipo de actividad", ["CORRECTIVO", "PREVENTIVO", "ALISTAMIENTO"])
+        fecha_estimada = st.date_input("Fecha estimada de cierre")
+        enviado = st.form_submit_button("Crear OT")
+
+    if enviado:
+        if not descripcion:
+            st.error("La descripción es obligatoria.")
+        else:
+            resultado = crear_ot({
+                "novedad_id": novedad_sel["id_nov"] if novedad_sel else None,
+                "equipo_id": equipo["id"] if equipo else None,
+                "sistema_id": sistema["id"] if sistema else None,
+                "subsistema_id": subsistema["id"] if subsistema else None,
+                "item_id": item["id"] if item else None,
+                "prioridad": prioridad,
+                "tecnico_id": tecnico["id"] if tecnico else None,
+                "descripcion_solicitud": descripcion,
+                "tipo_actividad": tipo_actividad,
+                "fecha_estimada": fecha_estimada,
+            }, planeador_id=usuario["email"])
+            st.success(f"OT creada: {resultado['id_ot']}")
