@@ -47,8 +47,10 @@ with tab_mapa:
         for a in activos_con_pos:
             x = float(a["pos_x"]) / 100 * ancho
             y = float(a["pos_y"]) / 100 * alto
+            ubicacion_tooltip = (a.get("ubicacion") or "Sin descripción de ubicación").replace('"', "'")
             puntos_svg += f"""
                 <g>
+                    <title>{a['nombre']} — {ubicacion_tooltip}</title>
                     <circle cx="{x}" cy="{y}" r="9" fill="#e74c3c" stroke="white" stroke-width="2" />
                     <text x="{x + 12}" y="{y + 4}" font-size="12" fill="#333">{a['nombre']}</text>
                 </g>
@@ -66,35 +68,59 @@ with tab_mapa:
         </svg>
         """
         st.markdown(svg, unsafe_allow_html=True)
-        st.caption(f"{len(activos_con_pos)} activo(s) ubicados en el mapa.")
+        st.caption(f"{len(activos_con_pos)} activo(s) ubicados en el mapa. Pasa el mouse sobre un punto para ver su ubicación.")
+
+        with st.expander("📋 Ver lista de ubicaciones"):
+            tabla = [{"Activo": a["nombre"], "ID": a["id_activo"],
+                       "Ubicación física": a.get("ubicacion") or "—"} for a in activos_con_pos]
+            st.dataframe(tabla, use_container_width=True, hide_index=True)
 
 with tab_ubicar:
-    st.write("Elige un activo y ajusta su posición en el plano (0 = izquierda/arriba, 100 = derecha/abajo).")
+    st.write("Elige un activo y define dónde está: descripción de ubicación física + posición en el plano.")
     if not activos:
         st.info("No hay activos registrados todavía.")
     else:
-        activo_sel = st.selectbox("Activo", activos, format_func=lambda a: a.get("nombre", a.get("id_activo")))
-        if activo_sel:
-            col1, col2 = st.columns(2)
-            with col1:
-                nuevo_x = st.slider("Posición horizontal (X)", 0, 100,
-                                      int(activo_sel.get("pos_x") or 50))
-            with col2:
-                nuevo_y = st.slider("Posición vertical (Y)", 0, 100,
-                                      int(activo_sel.get("pos_y") or 50))
+        busqueda_ubicar = st.text_input("🔍 Buscar activo por nombre o ID", key="busq_ubicar")
+        activos_filtrados = activos
+        if busqueda_ubicar:
+            b = busqueda_ubicar.lower()
+            activos_filtrados = [a for a in activos if b in (a.get("nombre") or "").lower()
+                                   or b in (a.get("id_activo") or "").lower()]
 
-            # Vista previa en vivo mientras ajustas
-            ancho, alto = 900, 300
-            x_prev = nuevo_x / 100 * ancho
-            y_prev = nuevo_y / 100 * alto
-            st.markdown(f"""
-            <svg width="100%" viewBox="0 0 {ancho} {alto}" style="background:#f4f4f4;border:1px solid #ddd;border-radius:8px;">
-                <circle cx="{x_prev}" cy="{y_prev}" r="10" fill="#3498db" stroke="white" stroke-width="2" />
-                <text x="{x_prev + 14}" y="{y_prev + 4}" font-size="12" fill="#333">{activo_sel.get('nombre', '')}</text>
-            </svg>
-            """, unsafe_allow_html=True)
+        if not activos_filtrados:
+            st.warning("No hay activos que coincidan con la búsqueda.")
+        else:
+            activo_sel = st.selectbox("Activo", activos_filtrados,
+                                        format_func=lambda a: f"{a.get('nombre', '—')} ({a.get('id_activo', '—')})")
+            if activo_sel:
+                ubicacion_texto = st.text_input(
+                    "📍 Ubicación física (descripción, ej: 'H75-H82 Fila 3 - Puesto 3')",
+                    value=activo_sel.get("ubicacion") or "",
+                )
 
-            if st.button("💾 Guardar posición"):
-                actualizar_activo(activo_sel["id_activo"], {"pos_x": nuevo_x, "pos_y": nuevo_y})
-                st.success(f"Posición guardada para {activo_sel['nombre']}.")
-                st.rerun()
+                col1, col2 = st.columns(2)
+                with col1:
+                    nuevo_x = st.slider("Posición horizontal en el mapa (X)", 0, 100,
+                                          int(activo_sel.get("pos_x") or 50))
+                with col2:
+                    nuevo_y = st.slider("Posición vertical en el mapa (Y)", 0, 100,
+                                          int(activo_sel.get("pos_y") or 50))
+
+                # Vista previa en vivo mientras ajustas
+                ancho, alto = 900, 300
+                x_prev = nuevo_x / 100 * ancho
+                y_prev = nuevo_y / 100 * alto
+                st.markdown(f"""
+                <svg width="100%" viewBox="0 0 {ancho} {alto}" style="background:#f4f4f4;border:1px solid #ddd;border-radius:8px;">
+                    <circle cx="{x_prev}" cy="{y_prev}" r="10" fill="#3498db" stroke="white" stroke-width="2" />
+                    <text x="{x_prev + 14}" y="{y_prev + 4}" font-size="12" fill="#333">{activo_sel.get('nombre', '')}</text>
+                </svg>
+                """, unsafe_allow_html=True)
+
+                if st.button("💾 Guardar ubicación"):
+                    actualizar_activo(activo_sel["id_activo"], {
+                        "ubicacion": ubicacion_texto or None,
+                        "pos_x": nuevo_x, "pos_y": nuevo_y,
+                    })
+                    st.success(f"Ubicación guardada para {activo_sel['nombre']}.")
+                    st.rerun()
