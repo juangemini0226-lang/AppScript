@@ -122,6 +122,25 @@ def crear_activo(data: dict) -> dict:
     return db.insert("activos", registro)
 
 
+def crear_activos_bulk(filas: list[dict]) -> dict:
+    """
+    Crea varios activos de una vez (carga masiva por CSV). No detiene
+    todo el lote si una fila falla — reporta éxitos y errores fila por
+    fila, para que el usuario sepa exactamente qué corregir.
+    """
+    exitosos = []
+    errores = []
+    for i, fila in enumerate(filas):
+        try:
+            if not fila.get("nombre"):
+                raise ValueError("Falta el nombre (obligatorio).")
+            resultado = crear_activo(fila)
+            exitosos.append(resultado)
+        except Exception as e:
+            errores.append({"fila": i + 1, "datos": fila, "error": str(e)})
+    return {"exitosos": exitosos, "errores": errores}
+
+
 def actualizar_activo(id_activo: str, data: dict) -> int:
     db = get_connector()
     return db.update("activos", where={"id_activo": id_activo}, data=data)

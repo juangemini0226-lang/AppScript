@@ -6,11 +6,13 @@ frontend (planta, equipo o molde), sin tocar el Sheet ni la base a mano.
 """
 
 import streamlit as st
+import pandas as pd
 
 from services.activos_service import (
     get_equipos, get_sistemas_simple, get_subsistemas_simple, get_items_simple,
     get_averias_simple, get_soluciones_simple, consultar_ubicacion_molde,
     list_activos_todos, crear_activo, actualizar_activo, desactivar_activo,
+    crear_activos_bulk,
 )
 
 if "usuario" not in st.session_state:
@@ -19,8 +21,8 @@ if "usuario" not in st.session_state:
 
 st.title("🏭 Activos y jerarquía técnica")
 
-tab_jerarquia, tab_molde, tab_crear, tab_listado = st.tabs(
-    ["Explorar jerarquía", "Consultar molde", "➕ Crear activo", "Listado completo"]
+tab_jerarquia, tab_molde, tab_crear, tab_csv, tab_listado = st.tabs(
+    ["Explorar jerarquía", "Consultar molde", "➕ Crear activo", "📤 Cargar CSV masivo", "Listado completo"]
 )
 
 with tab_jerarquia:
@@ -98,6 +100,102 @@ with tab_crear:
                 "peso": peso or None, "padre_id": padre_id,
             })
             st.success(f"Activo creado: {resultado['id_activo']} — {resultado['nombre']}")
+
+with tab_csv:
+    st.subheader("Cargar activos desde un CSV")
+    st.caption(
+        "Sube un archivo CSV con tus activos, elige qué columna de tu archivo "
+        "corresponde a cada campo del sistema, revisa la vista previa, y confirma "
+        "la carga. Los activos creados quedan editables normalmente en 'Listado completo'."
+    )
+
+    archivo = st.file_uploader("Archivo CSV", type=["csv"])
+
+    if archivo is not None:
+        try:
+            # Detecta separador automáticamente (coma o punto y coma, común en exports de Excel en español)
+            df = pd.read_csv(archivo, sep=None, engine="python")
+        except Exception as e:
+            st.error(f"No se pudo leer el archivo: {e}")
+            df = None
+
+        if df is not None:
+            st.write(f"**{len(df)} filas encontradas.** Vista previa:")
+            st.dataframe(df.head(10), use_container_width=True)
+
+            st.divider()
+            st.write("**Paso 2: elige qué columna de tu CSV corresponde a cada campo**")
+
+            columnas_csv = ["(no usar)"] + list(df.columns)
+
+            campos_sistema = [
+                ("nombre", "Nombre del activo *", True),
+                ("tipo", "Tipo (PLANTA/EQUIPO/MOLDE)", False),
+                ("tipoactivo", "Tipo de activo (ej: MOLDE, INYECTORA)", False),
+                ("fabricante", "Fabricante", False),
+                ("ubicacion", "Ubicación física", False),
+                ("familia", "Familia", False),
+                ("peso", "Peso", False),
+            ]
+
+            mapeo = {}
+            col_izq, col_der = st.columns(2)
+            for i, (campo, etiqueta, obligatorio) in enumerate(campos_sistema):
+                destino = col_izq if i % 2 == 0 else col_der
+                with destino:
+                    # intenta adivinar la columna por coincidencia de nombre
+                    sugerida = next((c for c in df.columns if campo.lower() in c.lower()), "(no usar)")
+                    idx_default = columnas_csv.index(sugerida) if sugerida in columnas_csv else 0
+                    seleccion = st.selectbox(
+                        f"{etiqueta}{' (obligatorio)' if obligatorio else ''}",
+                        columnas_csv, index=idx_default, key=f"map_{campo}",
+                    )
+                    mapeo[campo] = None if seleccion == "(no usar)" else seleccion
+
+            tipo_fijo = None
+            if not mapeo.get("tipo"):
+                tipo_fijo = st.selectbox(
+                    "No mapeaste una columna de 'Tipo' — ¿qué tipo usamos para TODAS las filas?",
+                    ["EQUIPO", "MOLDE", "PLANTA"],
+                )
+
+            if not mapeo.get("nombre"):
+                st.warning("Debes mapear al menos la columna de Nombre para poder importar.")
+            else:
+                st.divider()
+                st.write("**Paso 3: vista previa de lo que se va a crear**")
+
+                filas_a_crear = []
+                for _, fila in df.iterrows():
+                    dato = {
+                        "nombre": str(fila[mapeo["nombre"]]).strip() if pd.notna(fila[mapeo["nombre"]]) else None,
+                        "tipo": (str(fila[mapeo["tipo"]]).strip().upper() if mapeo.get("tipo") and pd.notna(fila[mapeo["tipo"]]) else tipo_fijo),
+                    }
+                    for campo in ["tipoactivo", "fabricante", "ubicacion", "familia", "peso"]:
+                        col = mapeo.get(campo)
+                        valor = fila[col] if col and pd.notna(fila[col]) else None
+                        if campo == "peso" and valor is not None:
+                            try:
+                                valor = float(str(valor).replace(",", "."))
+                            except ValueError:
+                                valor = None
+                        else:
+                            valor = str(valor).strip() if valor is not None else None
+                        dato[campo] = valor
+                    filas_a_crear.append(dato)
+
+                st.dataframe(pd.DataFrame(filas_a_crear).head(10), use_container_width=True)
+                st.caption(f"Se crearán {len(filas_a_crear)} activo(s) en total.")
+
+                if st.button(f"✅ Confirmar e importar {len(filas_a_crear)} activo(s)", type="primary"):
+                    with st.spinner("Importando..."):
+                        resultado = crear_activos_bulk(filas_a_crear)
+                    st.success(f"{len(resultado['exitosos'])} activo(s) creado(s) correctamente.")
+                    if resultado["errores"]:
+                        st.error(f"{len(resultado['errores'])} fila(s) con error:")
+                        st.dataframe(pd.DataFrame(resultado["errores"]), use_container_width=True)
+                    else:
+                        st.balloons()
 
 with tab_listado:
     st.subheader("Listado completo — edición rápida")
