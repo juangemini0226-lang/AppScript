@@ -1,38 +1,35 @@
 """
 db/migrate_from_sheets.py
 ===========================
-Script de UNA sola ejecución para volcar los datos actuales del Google
-Sheet (fuente de verdad hoy) hacia Cloud SQL (fuente de verdad futura).
+Script de migración Sheet -> Cloud SQL. Versión robusta: además de
+volcar los datos, LIMPIA los problemas típicos de un Sheet que lleva
+años editándose a mano:
 
-CÓMO CORRERLO (sin entorno local, todo desde GitHub):
-  1. Sube este repo a GitHub.
-  2. Créalo como un GitHub Codespace, o usa un workflow de GitHub Actions
-     manual (workflow_dispatch) que instale requirements.txt y corra:
-         python -m db.migrate_from_sheets
-  3. Variables de entorno necesarias (Secrets del repo/Codespace):
-       GOOGLE_SERVICE_ACCOUNT_JSON   -> JSON de la cuenta de servicio con
-                                        permiso de LECTURA sobre el Sheet
-       SHEET_ID                     -> ID del Google Sheet origen
-       (+ las mismas variables de conexión a Cloud SQL que usa la app,
-        ver .streamlit/secrets.toml.example; aquí se leen de env, no de
-        st.secrets, porque este script corre fuera de Streamlit)
+  - "#N/A", "#REF!", "#DIV/0!" en columnas numéricas -> NULL
+  - Booleanos con espacios en blanco o vacíos -> NULL (no revienta el INSERT)
+  - Fechas en formato DD/MM/YYYY (como las escribe Google Sheets en
+    español) -> se convierten a formato ISO antes de insertar, porque
+    Postgres por defecto espera MM/DD/YYYY y si no, revienta con
+    "date/time field value out of range"
+  - IDs duplicados en la primera columna (que se asume PK) -> se les
+    agrega un sufijo automático para no perder la fila, y se listan al
+    final para que decidas si hay que corregir el dato en el Sheet
 
-Qué hace:
-  - Lee cada hoja del Sheet (mismos 25 nombres que en CONFIG.SHEETS del
-    Apps Script original).
-  - Normaliza encabezados a snake_case (misma función que generó schema.sql).
-  - Inserta todo en la tabla Postgres equivalente, en lotes.
+CÓMO CORRERLO (sin entorno local, todo desde Cloud Shell / GitHub):
+  1. Abre un túnel a Cloud SQL con cloud-sql-proxy (ver DOCUMENTATION.md).
+  2. Define las variables de entorno: SHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON,
+     DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME.
+  3. python3 -m db.migrate_from_sheets
 
-Es idempotente por tabla: si quieres re-correrlo, primero hace TRUNCATE
-de la tabla destino (evita duplicados). Pensado para migraciones de
-"corte" (apagar Sheet, encender Cloud SQL), no para sincronización
-continua.
+Es idempotente por tabla: TRUNCATE + INSERT, se puede correr las veces
+que haga falta sin duplicar datos.
 """
 
 import os
 import re
 import json
 import time
+from datetime import datetime
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -47,6 +44,12 @@ SHEET_NAMES = [
     "MONTAJES", "TAREAS_PROGRAMADAS",
 ]
 
+MARCADORES_VACIOS = {"#N/A", "#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "N/A", "-"}
+FORMATOS_FECHA = [
+    "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y",
+    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d",
+]
+
 
 def pgname(h: str) -> str:
     h = h.strip()
@@ -55,6 +58,53 @@ def pgname(h: str) -> str:
     h = re.sub(r"[^A-Za-z0-9_]+", "_", h)
     h = re.sub(r"_+", "_", h).strip("_").lower()
     return h
+
+
+def guess_type(col: str) -> str:
+    """Debe coincidir con la lógica que generó schema.sql."""
+    c = col.upper()
+    if c.startswith("ID_") or c == "ID":
+        return "VARCHAR"
+    if "FECHA" in c or c.endswith("_EN"):
+        return "TIMESTAMP"
+    if c in ("ACTIVO", "RESUELTO", "SOLICITA_CIERRE"):
+        return "BOOLEAN"
+    if c in ("STOCK", "STOCK_MINIMO", "CANTIDAD", "MINUTOS", "TIEMPO_MINUTOS",
+              "TIEMPO_EMPLEADO_MIN", "MINUTOS_TOTALES", "TIEMPO_EVENTOS_MIN",
+              "UNIDADES_INYECTADAS", "UNDS", "CICLOSACTUALES", "CICLOS_ULT_MANT",
+              "FRECUENCIA_MANT", "CICLOS_DESDE_MANT", "CICLOS_PARA_MANT", "PESO"):
+        return "NUMERIC"
+    return "TEXT"
+
+
+def limpiar_valor(valor: str, tipo: str):
+    valor = (valor or "").strip()
+    if not valor or valor.upper() in MARCADORES_VACIOS:
+        return None
+
+    if tipo == "BOOLEAN":
+        v = valor.strip().upper()
+        if v in ("TRUE", "1", "X", "SI", "SÍ", "YES"):
+            return True
+        if v in ("FALSE", "0", "NO"):
+            return False
+        return None  # ambiguo (ej: un solo espacio) -> NULL, no revienta el insert
+
+    if tipo == "NUMERIC":
+        try:
+            return float(valor.replace(",", "."))
+        except ValueError:
+            return None
+
+    if tipo == "TIMESTAMP":
+        for fmt in FORMATOS_FECHA:
+            try:
+                return datetime.strptime(valor, fmt).isoformat()
+            except ValueError:
+                continue
+        return None  # no se pudo parsear -> NULL en vez de reventar el INSERT
+
+    return valor
 
 
 def get_sheet_client():
@@ -67,11 +117,6 @@ def get_sheet_client():
 
 
 def get_pg_engine():
-    """
-    Conexión directa vía instancia pública + IP allowlisted, para
-    scripts batch que no corren dentro de Streamlit (no usan st.secrets).
-    Ajusta a Cloud SQL Connector si prefieres no exponer IP pública.
-    """
     user = os.environ["DB_USER"]
     pwd = os.environ["DB_PASS"]
     host = os.environ["DB_HOST"]
@@ -81,18 +126,23 @@ def get_pg_engine():
     return sqlalchemy.create_engine(url)
 
 
-def migrate_sheet(gc, engine, sheet_id: str, sheet_name: str):
+def migrate_sheet(gc, engine, sheet_id: str, sheet_name: str) -> list[str]:
+    """Devuelve la lista de IDs que tuvieron que de-duplicarse (para el resumen final)."""
     table = pgname(sheet_name)
     print(f"→ Migrando {sheet_name} -> tabla `{table}`")
 
     ws = gc.open_by_key(sheet_id).worksheet(sheet_name)
     values = ws.get_all_values()
     if not values or len(values) < 2:
-        print(f"  (vacía, se omite)")
-        return
+        print("  (vacía, se omite)")
+        return []
 
-    headers = [pgname(h) for h in values[0] if h.strip()]
+    headers_originales = [h for h in values[0] if h.strip()]
+    headers = [pgname(h) for h in headers_originales]
+    tipos = [guess_type(h) for h in headers_originales]
     rows = values[1:]
+
+    duplicados_encontrados = []
 
     with engine.begin() as conn:
         conn.execute(sqlalchemy.text(f"TRUNCATE TABLE {table} CASCADE"))
@@ -103,19 +153,39 @@ def migrate_sheet(gc, engine, sheet_id: str, sheet_name: str):
         )
 
         batch = []
+        ids_vistos = set()
+        pk_col = headers[0]  # se asume que la primera columna es la PK, como en schema.sql
+
         for row in rows:
             if not any(cell.strip() for cell in row):
                 continue  # fila vacía
-            record = {headers[i]: (row[i] if i < len(row) else None)
-                       for i in range(len(headers))}
-            # Strings vacíos -> NULL para no romper columnas NUMERIC/TIMESTAMP
-            record = {k: (v if v != "" else None) for k, v in record.items()}
+
+            record = {}
+            for i, h in enumerate(headers):
+                crudo = row[i] if i < len(row) else ""
+                record[h] = limpiar_valor(crudo, tipos[i])
+
+            # de-duplicar la PK si se repite, para no perder la fila
+            pk_val = record.get(pk_col)
+            if pk_val is not None:
+                pk_original = pk_val
+                contador = 2
+                while pk_val in ids_vistos:
+                    pk_val = f"{pk_original}_DUP{contador}"
+                    contador += 1
+                if pk_val != pk_original:
+                    duplicados_encontrados.append(f"{table}.{pk_col}: {pk_original} -> {pk_val}")
+                    record[pk_col] = pk_val
+                ids_vistos.add(pk_val)
+
             batch.append(record)
 
         if batch:
             conn.execute(insert_sql, batch)
 
-    print(f"  ✔ {len(batch)} filas migradas")
+    print(f"  ✔ {len(batch)} filas migradas" +
+          (f" ({len(duplicados_encontrados)} de-duplicadas)" if duplicados_encontrados else ""))
+    return duplicados_encontrados
 
 
 def main():
@@ -123,14 +193,34 @@ def main():
     gc = get_sheet_client()
     engine = get_pg_engine()
 
-    for name in SHEET_NAMES:
+    # Si defines ONLY_SHEET, solo se migra esa hoja (útil para recargar
+    # una sola tabla sin volver a truncar/recargar las demás — por
+    # ejemplo, JERARQUIA_TECNICA, sin tocar ACTIVOS que ya editaste
+    # a mano desde la app).
+    solo_hoja = os.environ.get("ONLY_SHEET", "").strip().upper()
+    hojas_a_migrar = [h for h in SHEET_NAMES if h.upper() == solo_hoja] if solo_hoja else SHEET_NAMES
+
+    if solo_hoja and not hojas_a_migrar:
+        print(f"⚠️  ONLY_SHEET='{solo_hoja}' no coincide con ninguna hoja conocida. "
+              f"Usa uno de: {', '.join(SHEET_NAMES)}")
+        return
+
+    todos_los_duplicados = []
+
+    for name in hojas_a_migrar:
         try:
-            migrate_sheet(gc, engine, sheet_id, name)
+            duplicados = migrate_sheet(gc, engine, sheet_id, name)
+            todos_los_duplicados.extend(duplicados)
         except Exception as e:
             print(f"  ✘ ERROR en {name}: {e}")
         time.sleep(2)  # evita el límite de cuota de lectura de Google Sheets
 
-    print("\nMigración terminada. Revisa los ✘ arriba si algo falló.")
+    print("\nMigración terminada.")
+    if todos_los_duplicados:
+        print(f"\n⚠️  Se de-duplicaron {len(todos_los_duplicados)} ID(s) repetidos "
+              "(la fila se conservó, pero revisa si el dato original está bien):")
+        for d in todos_los_duplicados:
+            print(f"   - {d}")
 
 
 if __name__ == "__main__":
