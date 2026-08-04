@@ -250,39 +250,6 @@ def _home_page():
                    delta_color="inverse" if kpis["ot_alta_prioridad"] > 0 else "normal")
         c4.metric("Novedades pendientes", kpis["novedades_pendientes"])
 
-    st.divider()
-    st.subheader("⚡ Accesos rápidos")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        with st.expander("📋 Reportar novedad rápida"):
-            with st.form("home_reportar_novedad", clear_on_submit=True):
-                desc = st.text_area("Descripción de la falla *", key="home_nov_desc")
-                prioridad = st.selectbox("Prioridad", ["BAJA", "MEDIA", "ALTA"], index=1, key="home_nov_prio")
-                enviar = st.form_submit_button("Reportar")
-            if enviar and desc:
-                from services.novedades_service import crear_novedad
-                res = crear_novedad({"descripcion": desc, "prioridad": prioridad}, creado_por=usuario["email"])
-                st.success(f"Novedad reportada: {res['id_nov']}")
-
-    with col2:
-        with st.expander("🏭 Crear activo rápido"):
-            with st.form("home_crear_activo", clear_on_submit=True):
-                nombre = st.text_input("Nombre *", key="home_act_nombre")
-                tipo = st.selectbox("Tipo", ["MOLDE", "EQUIPO", "PLANTA"], key="home_act_tipo")
-                enviar = st.form_submit_button("Crear")
-            if enviar and nombre:
-                from services.activos_service import crear_activo
-                res = crear_activo({"nombre": nombre, "tipo": tipo})
-                st.success(f"Activo creado: {res['id_activo']}")
-
-    with col3:
-        with st.expander("🛠️ Ver mis módulos"):
-            st.write("Usa el menú de la izquierda para navegar entre los módulos disponibles para tu rol.")
-            if usuario["rol"] in ("PLANEADOR", "AUDITOR"):
-                st.caption("Como administrador, puedes prender/apagar módulos en **Admin → Módulos de la app**.")
-
 
 def _build_navigation():
     usuario = st.session_state["usuario"]

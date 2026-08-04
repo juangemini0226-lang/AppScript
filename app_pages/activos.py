@@ -11,7 +11,7 @@ import streamlit as st
 import pandas as pd
 
 from services.activos_service import (
-    get_equipos, get_sistemas_simple, get_subsistemas_simple, get_items_simple,
+    get_equipos, get_data_jerarquia, get_sistemas_simple, get_subsistemas_simple, get_items_simple,
     get_averias_simple, get_soluciones_simple, consultar_ubicacion_molde,
     list_activos_todos, crear_activo, actualizar_activo, desactivar_activo,
     crear_activos_bulk, exportar_activos_para_ubicacion, importar_ubicaciones_bulk,
@@ -29,30 +29,37 @@ tab_jerarquia, tab_molde, tab_crear, tab_csv, tab_ubicaciones, tab_listado = st.
 )
 
 with tab_jerarquia:
-    equipos = get_equipos()
-    if not equipos:
-        st.warning("No hay equipos activos registrados.")
+    st.caption(
+        "Este catálogo (Sistema → Subsistema → Ítem → Avería → Solución) es "
+        "compartido — clasifica **dónde y qué tipo de falla** ocurre, "
+        "independiente de cuál molde o equipo específico sea. Se usa al "
+        "reportar una novedad para indicar la parte técnica afectada. Se "
+        "administra desde **Admin → Jerarquía ISO 14224**."
+    )
+    sistemas = get_data_jerarquia("SISTEMA")
+    if not sistemas:
+        st.warning(
+            "Todavía no hay Sistemas creados. Ve a Admin → Jerarquía ISO 14224 "
+            "→ 'Crear nodo' para empezar a construir el catálogo."
+        )
     else:
-        equipo = st.selectbox("Equipo", equipos, format_func=lambda e: e["nombre"])
-        if equipo:
-            sistemas = get_sistemas_simple(equipo["id"])
-            sistema = st.selectbox("Sistema", sistemas, format_func=lambda s: s["nombre"]) if sistemas else None
-            if sistema:
-                subsistemas = get_subsistemas_simple(sistema["id"])
-                subsistema = st.selectbox("Subsistema", subsistemas, format_func=lambda s: s["nombre"]) if subsistemas else None
-                if subsistema:
-                    items = get_items_simple(subsistema["id"])
-                    item = st.selectbox("Ítem", items, format_func=lambda i: i["nombre"]) if items else None
-                    if item:
-                        averias = get_averias_simple(item["id"])
-                        if averias:
-                            averia = st.selectbox("Avería típica", averias, format_func=lambda a: a["nombre"])
-                            if averia:
-                                soluciones = get_soluciones_simple(averia["id"])
-                                if soluciones:
-                                    st.write("**Soluciones registradas:**")
-                                    for s in soluciones:
-                                        st.markdown(f"- {s['nombre']}")
+        sistema = st.selectbox("Sistema", sistemas, format_func=lambda s: s["nombre"])
+        if sistema:
+            subsistemas = get_subsistemas_simple(sistema["id"])
+            subsistema = st.selectbox("Subsistema", subsistemas, format_func=lambda s: s["nombre"]) if subsistemas else None
+            if subsistema:
+                items = get_items_simple(subsistema["id"])
+                item = st.selectbox("Ítem", items, format_func=lambda i: i["nombre"]) if items else None
+                if item:
+                    averias = get_averias_simple(item["id"])
+                    if averias:
+                        averia = st.selectbox("Avería típica", averias, format_func=lambda a: a["nombre"])
+                        if averia:
+                            soluciones = get_soluciones_simple(averia["id"])
+                            if soluciones:
+                                st.write("**Soluciones registradas:**")
+                                for s in soluciones:
+                                    st.markdown(f"- {s['nombre']}")
 
 with tab_molde:
     molde_id = st.text_input("Tag del molde (el código con el que lo llaman en planta)")
