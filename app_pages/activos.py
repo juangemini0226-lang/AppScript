@@ -16,6 +16,7 @@ from services.activos_service import (
     list_activos_todos, crear_activo, actualizar_activo, desactivar_activo,
     crear_activos_bulk, exportar_activos_para_ubicacion, importar_ubicaciones_bulk,
 )
+from services.mapa_service import list_zonas as list_zonas_disponibles
 
 if "usuario" not in st.session_state:
     st.warning("Inicia sesión desde la página principal.")
@@ -213,34 +214,59 @@ with tab_ubicaciones:
     st.subheader("📍 Plantilla de ubicaciones de moldes/activos")
     st.markdown("""
     **Cómo funciona:**
-    1. Descarga la plantilla — trae los activos ya registrados (Tag y Nombre)
-       para que solo llenes **Zona** y **Ubicación**.
-    2. La **Zona** es la ubicación *permanente* asignada al molde
-       (ej: "Bodega A - Estante 3"). La **Ubicación** es donde está
-       *ahora mismo* — normalmente igual a la zona, salvo cuando el
-       molde está en una Orden de Trabajo en ejecución/en espera, caso
-       en el que el sistema la cambia sola a "TALLER" y la regresa a
-       la zona automáticamente al cerrar la OT.
-    3. Llena el Excel (agrega filas nuevas si quieres registrar
-       ubicaciones de activos que aún no existen — necesitan tener el
-       mismo Tag que uses luego para crearlos).
-    4. Súbelo aquí abajo para aplicar los cambios de una vez.
+    1. Descarga la plantilla — trae el **Tag** de cada molde ya registrado
+       (el Nombre va solo de referencia, para identificarlo, no se usa al
+       volver a subir el archivo).
+    2. Llena la columna **Zona** de cada fila — tiene una lista
+       desplegable con las zonas que ya creaste en 'Mapa de planta → Zonas',
+       para evitar que escribas un nombre de zona que no existe.
+    3. Súbelo aquí abajo para aplicar los cambios de una vez — solo se
+       usan las columnas **Tag** y **Zona**.
 
     Esto normalmente se hace una sola vez para la carga inicial —
     después, los técnicos editan la ubicación de un molde puntual
     directamente desde 'Listado completo' o el Mapa de planta.
     """)
 
+    zonas_disponibles = [z["nombre"] for z in list_zonas_disponibles()]
+    if not zonas_disponibles:
+        st.warning(
+            "Todavía no has creado zonas en 'Mapa de planta → Zonas'. "
+            "Puedes descargar la plantilla igual, pero sin lista desplegable "
+            "de zonas válidas hasta que crees al menos una."
+        )
+
     st.divider()
     st.write("**Paso 1: descarga la plantilla**")
 
     datos_actuales = exportar_activos_para_ubicacion()
-    df_plantilla = pd.DataFrame(datos_actuales) if datos_actuales else pd.DataFrame(
-        columns=["Tag", "Nombre", "Zona", "Ubicacion"]
-    )
+
+    # Se genera con openpyxl directo (no solo pandas) para poder agregar
+    # la lista desplegable de zonas válidas en la columna Zona.
+    from openpyxl import Workbook
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ubicaciones"
+    ws.append(["Tag", "Nombre (referencia)", "Zona"])
+
+    for fila in datos_actuales:
+        ws.append([fila["Tag"], fila["Nombre (referencia)"], fila["Zona"]])
+
+    if zonas_disponibles:
+        formula_lista = '"' + ",".join(zonas_disponibles) + '"'
+        dv = DataValidation(type="list", formula1=formula_lista, allow_blank=True,
+                              showDropDown=False)
+        ws.add_data_validation(dv)
+        dv.add(f"C2:C{max(len(datos_actuales) + 1, 1000)}")
+
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 35
+    ws.column_dimensions["C"].width = 22
 
     buffer = io.BytesIO()
-    df_plantilla.to_excel(buffer, index=False, sheet_name="Ubicaciones")
+    wb.save(buffer)
     buffer.seek(0)
 
     st.download_button(
@@ -264,12 +290,11 @@ with tab_ubicaciones:
             df_subido = None
 
         if df_subido is not None:
-            columnas_necesarias = {"Tag", "Zona", "Ubicacion"}
-            if not columnas_necesarias.issubset(set(df_subido.columns)):
-                st.error(f"El archivo debe tener las columnas: {', '.join(columnas_necesarias)}")
+            if "Tag" not in df_subido.columns or "Zona" not in df_subido.columns:
+                st.error("El archivo debe tener al menos las columnas: Tag, Zona")
             else:
                 st.write("Vista previa:")
-                st.dataframe(df_subido.head(10), use_container_width=True)
+                st.dataframe(df_subido[["Tag", "Zona"]].head(10), use_container_width=True)
 
                 if st.button(f"✅ Aplicar {len(df_subido)} ubicación(es)", type="primary"):
                     filas = df_subido.fillna("").to_dict("records")

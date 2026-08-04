@@ -185,18 +185,18 @@ def eliminar_activos_bulk(ids_activo: list[str]) -> int:
 
 def exportar_activos_para_ubicacion() -> list[dict]:
     """
-    Para la plantilla de Excel de ubicaciones: tag, nombre, zona y
-    ubicación actual de cada activo, para que se llenen/corrijan y se
-    vuelvan a subir con importar_ubicaciones_bulk().
+    Para la plantilla de Excel de ubicaciones: tag y zona actual de
+    cada activo (Nombre solo como referencia visual, no se usa al
+    reimportar). Se llena/corrige la columna Zona y se vuelve a subir
+    con importar_ubicaciones_bulk().
     """
     db = get_connector()
     rows = db.fetch_all("activos", where={"activo": True}, order_by="nombre")
     return [
         {
             "Tag": r.get("tag") or r["id_activo"],
-            "Nombre": r.get("nombre"),
+            "Nombre (referencia)": r.get("nombre"),
             "Zona": r.get("zona") or "",
-            "Ubicacion": r.get("ubicacion") or "",
         }
         for r in rows
     ]
@@ -204,9 +204,9 @@ def exportar_activos_para_ubicacion() -> list[dict]:
 
 def importar_ubicaciones_bulk(filas: list[dict]) -> dict:
     """
-    Actualiza zona/ubicación buscando por Tag (o por id_activo si el
-    Tag no hace match con ninguno). filas: lista de dicts con llaves
-    Tag, Zona, Ubicacion (tal como vienen de la plantilla de Excel).
+    Actualiza la zona (y la ubicación, que se iguala a la zona) buscando
+    por Tag. filas: lista de dicts con llaves Tag y Zona, tal como
+    vienen de la plantilla de Excel.
     """
     db = get_connector()
     actualizados = []
@@ -226,9 +226,8 @@ def importar_ubicaciones_bulk(filas: list[dict]) -> dict:
             continue
 
         zona = str(fila.get("Zona") or "").strip() or None
-        ubicacion = str(fila.get("Ubicacion") or "").strip() or None
         db.update("activos", where={"id_activo": activo["id_activo"]},
-                   data={"zona": zona, "ubicacion": ubicacion})
+                   data={"zona": zona, "ubicacion": zona})
         actualizados.append(tag)
 
     return {"actualizados": actualizados, "no_encontrados": no_encontrados}
