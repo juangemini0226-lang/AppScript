@@ -13,6 +13,7 @@ from services.admin_service import (
     list_usuarios, crear_usuario, actualizar_usuario, set_usuario_activo, eliminar_usuario,
     list_feature_flags, set_feature_flag, MODULOS_DISPONIBLES, ROLES_DISPONIBLES,
     get_feature_flags_full, set_feature_flag_full,
+    SUBFEATURES_CATALOGO, get_subfeatures_full, set_subfeature_full,
     list_tables, get_table_preview, get_table_row_count, run_readonly_query,
 )
 from services.activos_service import list_activos_todos, eliminar_activos_bulk, desactivar_activo
@@ -32,8 +33,8 @@ if st.session_state["usuario"]["rol"] not in ("PLANEADOR", "AUDITOR"):
 
 st.title("⚙️ Administración")
 
-tab_modulos, tab_usuarios, tab_crear_usuario, tab_jerarquia, tab_db, tab_activos_masivo = st.tabs(
-    ["Módulos de la app", "Usuarios", "➕ Crear usuario", "🧬 Jerarquía ISO 14224",
+tab_modulos, tab_subfunciones, tab_usuarios, tab_crear_usuario, tab_jerarquia, tab_db, tab_activos_masivo = st.tabs(
+    ["Módulos de la app", "🔐 Permisos por sub-función", "Usuarios", "➕ Crear usuario", "🧬 Jerarquía ISO 14224",
      "🗄️ Explorador de base de datos", "🗑️ Gestión masiva de activos"]
 )
 
@@ -328,3 +329,42 @@ with tab_activos_masivo:
             if c2.button("Cancelar", key="confirm_bulk_delete_no"):
                 del st.session_state["confirmar_borrado_masivo"]
                 st.rerun()
+
+with tab_subfunciones:
+    st.subheader("🔐 Permisos por sub-función (dentro de cada módulo)")
+    st.caption(
+        "Control más fino que 'Módulos de la app': aquí prendes/apagas "
+        "pestañas o funciones ESPECÍFICAS dentro de un módulo, y eliges "
+        "qué roles las ven. Ej: dejar 'Cargar CSV masivo' solo para "
+        "Planeador dentro del módulo Activos, sin apagar todo el módulo."
+    )
+
+    modulo_elegido = st.selectbox(
+        "Módulo", list(SUBFEATURES_CATALOGO.keys()),
+        format_func=lambda k: next((m["label"] for m in MODULOS_DISPONIBLES if m["key"] == k), k),
+        key="modulo_subfeatures",
+    )
+
+    subfeatures_full = get_subfeatures_full(modulo_elegido)
+    catalogo_modulo = SUBFEATURES_CATALOGO.get(modulo_elegido, [])
+
+    for sf in catalogo_modulo:
+        key = sf["key"]
+        info = subfeatures_full.get(key, {"activo": True, "roles": ROLES_DISPONIBLES})
+
+        st.markdown(f"**{sf['label']}**")
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            nuevo_activo_sf = st.toggle("Activo", value=info["activo"], key=f"sfflag_{modulo_elegido}_{key}")
+        with col2:
+            nuevos_roles_sf = st.multiselect(
+                "Visible para estos roles", ROLES_DISPONIBLES,
+                default=info["roles"], key=f"sfroles_{modulo_elegido}_{key}",
+                label_visibility="collapsed",
+            )
+
+        if nuevo_activo_sf != info["activo"] or set(nuevos_roles_sf) != set(info["roles"]):
+            set_subfeature_full(modulo_elegido, key, nuevo_activo_sf, nuevos_roles_sf)
+            st.success(f"'{sf['label']}' actualizado.")
+            st.rerun()
+        st.divider()

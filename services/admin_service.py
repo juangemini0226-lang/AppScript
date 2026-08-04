@@ -142,6 +142,93 @@ def is_module_visible_for_role(feature_key: str, rol: str) -> bool:
 
 
 # ----------------------------------------------------------------------
+# SUB-FUNCIONES (widgets/pestañas dentro de cada módulo) — nuevo
+# ----------------------------------------------------------------------
+# Catálogo de qué pestañas/widgets tiene cada módulo, para que Admin
+# pueda prender/apagarlas individualmente y decidir qué roles las ven,
+# igual que con los módulos completos, pero un nivel más abajo.
+
+SUBFEATURES_CATALOGO = {
+    "activos": [
+        {"key": "explorar_jerarquia", "label": "Explorar jerarquía"},
+        {"key": "consultar_molde", "label": "Consultar molde"},
+        {"key": "crear_activo", "label": "Crear activo"},
+        {"key": "csv_masivo", "label": "Cargar CSV masivo"},
+        {"key": "plantilla_ubicaciones", "label": "Plantilla de ubicaciones"},
+        {"key": "listado", "label": "Listado completo"},
+    ],
+    "ordenes_trabajo": [
+        {"key": "kanban", "label": "Tablero Kanban"},
+        {"key": "lista_detalle", "label": "Lista y detalle"},
+        {"key": "crear_ot", "label": "Crear OT"},
+    ],
+    "novedades": [
+        {"key": "reportar", "label": "Reportar novedad"},
+        {"key": "tablero", "label": "Tablero de seguimiento"},
+    ],
+    "maquilas": [
+        {"key": "historial", "label": "Historial"},
+        {"key": "registrar_movimiento", "label": "Registrar movimiento"},
+        {"key": "nuevo_maquilador", "label": "Nuevo maquilador"},
+    ],
+    "mapa_planta": [
+        {"key": "ver_mapa", "label": "Ver mapa"},
+        {"key": "foto_planta", "label": "Foto de planta"},
+        {"key": "zonas", "label": "Zonas"},
+        {"key": "ubicar_activo", "label": "Ubicar activo"},
+    ],
+}
+
+
+def get_subfeatures_full(modulo_key: str) -> dict[str, dict]:
+    """{"sub_key": {"activo": bool, "roles": [...]}} para todas las
+    sub-funciones de un módulo. Igual que get_feature_flags_full() pero
+    un nivel más abajo."""
+    db = get_connector()
+    rows = db.fetch_all("sub_feature_flags", where={"modulo_key": modulo_key})
+    por_key = {r["sub_feature_key"]: r for r in rows}
+
+    catalogo = SUBFEATURES_CATALOGO.get(modulo_key, [])
+    resultado = {}
+    for sf in catalogo:
+        key = sf["key"]
+        row = por_key.get(key)
+        if row:
+            roles_raw = (row.get("roles_permitidos") or "TODOS").strip()
+            roles = ROLES_DISPONIBLES if roles_raw == "TODOS" else \
+                [r.strip() for r in roles_raw.split(",") if r.strip()]
+            resultado[key] = {"activo": bool(row.get("activo", True)), "roles": roles}
+        else:
+            resultado[key] = {"activo": True, "roles": list(ROLES_DISPONIBLES)}
+    return resultado
+
+
+def set_subfeature_full(modulo_key: str, sub_feature_key: str, activo: bool, roles: list[str]) -> None:
+    db = get_connector()
+    roles_str = "TODOS" if set(roles) >= set(ROLES_DISPONIBLES) else ",".join(roles)
+    existente = db.fetch_one("sub_feature_flags",
+                               where={"modulo_key": modulo_key, "sub_feature_key": sub_feature_key})
+    data = {"activo": activo, "roles_permitidos": roles_str}
+    if existente:
+        db.update("sub_feature_flags",
+                   where={"modulo_key": modulo_key, "sub_feature_key": sub_feature_key}, data=data)
+    else:
+        db.insert("sub_feature_flags", {"modulo_key": modulo_key, "sub_feature_key": sub_feature_key, **data})
+
+
+def visible_subfeatures(modulo_key: str, rol: str) -> list[dict]:
+    """
+    Devuelve, en orden, las sub-funciones del módulo que el rol actual
+    puede ver: [{"key":..., "label":...}, ...]. Las páginas usan esto
+    para armar sus pestañas dinámicamente (ver utils/tabs.py).
+    """
+    flags = get_subfeatures_full(modulo_key)
+    catalogo = SUBFEATURES_CATALOGO.get(modulo_key, [])
+    return [sf for sf in catalogo if flags.get(sf["key"], {}).get("activo", True)
+            and rol in flags.get(sf["key"], {}).get("roles", ROLES_DISPONIBLES)]
+
+
+# ----------------------------------------------------------------------
 # EXPLORADOR DE BASE DE DATOS (nuevo)
 # ----------------------------------------------------------------------
 
