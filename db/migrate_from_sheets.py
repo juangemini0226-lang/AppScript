@@ -193,9 +193,21 @@ def main():
     gc = get_sheet_client()
     engine = get_pg_engine()
 
+    # Si defines ONLY_SHEET, solo se migra esa hoja (útil para recargar
+    # una sola tabla sin volver a truncar/recargar las demás — por
+    # ejemplo, JERARQUIA_TECNICA, sin tocar ACTIVOS que ya editaste
+    # a mano desde la app).
+    solo_hoja = os.environ.get("ONLY_SHEET", "").strip().upper()
+    hojas_a_migrar = [h for h in SHEET_NAMES if h.upper() == solo_hoja] if solo_hoja else SHEET_NAMES
+
+    if solo_hoja and not hojas_a_migrar:
+        print(f"⚠️  ONLY_SHEET='{solo_hoja}' no coincide con ninguna hoja conocida. "
+              f"Usa uno de: {', '.join(SHEET_NAMES)}")
+        return
+
     todos_los_duplicados = []
 
-    for name in SHEET_NAMES:
+    for name in hojas_a_migrar:
         try:
             duplicados = migrate_sheet(gc, engine, sheet_id, name)
             todos_los_duplicados.extend(duplicados)
