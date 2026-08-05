@@ -13,7 +13,6 @@ from services.dashboard_service import get_kpis
 
 st.set_page_config(
     page_title="Estra - Mtto",
-    page_icon="",
     layout="wide",
 )
 st.markdown("""
@@ -334,25 +333,25 @@ def _build_navigation():
     usuario = st.session_state["usuario"]
     rol = usuario["rol"]
 
-    home = st.Page(_home_page, title="Inicio", icon="", default=True)
+    home = st.Page(_home_page, title="Inicio", default=True)
 
     operacion = []
     if is_module_visible_for_role("activos", rol):
-        operacion.append(st.Page("app_pages/activos.py", title="Activos", icon=""))
+        operacion.append(st.Page("app_pages/activos.py", title="Activos"))
     if is_module_visible_for_role("ordenes_trabajo", rol):
-        operacion.append(st.Page("app_pages/ordenes_trabajo.py", title="Órdenes de trabajo", icon=""))
+        operacion.append(st.Page("app_pages/ordenes_trabajo.py", title="Órdenes de trabajo"))
     if is_module_visible_for_role("novedades", rol):
-        operacion.append(st.Page("app_pages/novedades.py", title="Novedades", icon=""))
+        operacion.append(st.Page("app_pages/novedades.py", title="Novedades"))
     if is_module_visible_for_role("maquilas", rol):
-        operacion.append(st.Page("app_pages/maquilas.py", title="Maquilas", icon=""))
+        operacion.append(st.Page("app_pages/maquilas.py", title="Maquilas"))
     if is_module_visible_for_role("mapa_planta", rol):
-        operacion.append(st.Page("app_pages/mapa_planta.py", title="Mapa de planta", icon=""))
+        operacion.append(st.Page("app_pages/mapa_planta.py", title="Mapa de planta"))
 
     secciones = {"General": [home]}
     if operacion:
         secciones["Operación"] = operacion
     if rol in ("PLANEADOR", "AUDITOR"):
-        secciones["Administración"] = [st.Page("app_pages/admin.py", title="Admin", icon="")]
+        secciones["Administración"] = [st.Page("app_pages/admin.py", title="Admin")]
 
     return st.navigation(secciones)
 
