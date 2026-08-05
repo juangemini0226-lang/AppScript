@@ -24,7 +24,7 @@ if "usuario" not in st.session_state:
     st.warning("Inicia sesión desde la página principal.")
     st.stop()
 
-st.title("🏭 Activos y jerarquía técnica")
+st.title("Activos y jerarquía técnica")
 
 tabs = build_tabs("activos", st.session_state["usuario"]["rol"])
 
@@ -203,7 +203,7 @@ if "csv_masivo" in tabs:
                     st.dataframe(pd.DataFrame(filas_a_crear).head(10), use_container_width=True)
                     st.caption(f"Se crearán {len(filas_a_crear)} activo(s) en total.")
 
-                    if st.button(f"✅ Confirmar e importar {len(filas_a_crear)} activo(s)", type="primary"):
+                    if st.button(f" Confirmar e importar {len(filas_a_crear)} activo(s)", type="primary"):
                         with st.spinner("Importando..."):
                             resultado = crear_activos_bulk(filas_a_crear)
                         st.success(f"{len(resultado['exitosos'])} activo(s) creado(s) correctamente.")
@@ -215,7 +215,7 @@ if "csv_masivo" in tabs:
 
 if "plantilla_ubicaciones" in tabs:
     with tabs["plantilla_ubicaciones"]:
-        st.subheader("📍 Plantilla de ubicaciones de moldes/activos")
+        st.subheader("Plantilla de ubicaciones de moldes/activos")
         st.markdown("""
         **Cómo funciona:**
         1. Descarga la plantilla — trae el **Tag** de cada molde ya registrado
@@ -274,7 +274,7 @@ if "plantilla_ubicaciones" in tabs:
         buffer.seek(0)
 
         st.download_button(
-            "⬇️ Descargar plantilla de ubicaciones (Excel)",
+            " Descargar plantilla de ubicaciones (Excel)",
             data=buffer,
             file_name="plantilla_ubicaciones_activos.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -300,7 +300,7 @@ if "plantilla_ubicaciones" in tabs:
                     st.write("Vista previa:")
                     st.dataframe(df_subido[["Tag", "Zona"]].head(10), use_container_width=True)
 
-                    if st.button(f"✅ Aplicar {len(df_subido)} ubicación(es)", type="primary"):
+                    if st.button(f" Aplicar {len(df_subido)} ubicación(es)", type="primary"):
                         filas = df_subido.fillna("").to_dict("records")
                         with st.spinner("Actualizando ubicaciones..."):
                             resultado = importar_ubicaciones_bulk(filas)
@@ -314,7 +314,7 @@ if "plantilla_ubicaciones" in tabs:
 
 if "generar_qr" in tabs:
     with tabs["generar_qr"]:
-        st.subheader("🏷️ Generar códigos QR")
+        st.subheader("Generar códigos QR")
         st.caption(
             "Cada QR codifica la ficha básica del activo (tag, nombre, tipo, "
             "familia, fabricante, zona) como texto plano — se lee con la cámara "
@@ -335,17 +335,17 @@ if "generar_qr" in tabs:
                     format_func=lambda a: f"{a.get('tag') or a.get('nombre', '—')} ({a.get('id_activo', '—')})",
                     key="qr_single_select",
                 )
-                if activo_qr and st.button("🏷️ Generar QR"):
+                if activo_qr and st.button("Generar QR"):
                     png_bytes = generar_qr_png(activo_qr)
                     st.image(png_bytes, width=220, caption=activo_qr.get("tag") or activo_qr["id_activo"])
                     st.download_button(
-                        "⬇️ Descargar PNG",
+                        " Descargar PNG",
                         data=png_bytes,
                         file_name=f"QR_{activo_qr.get('tag') or activo_qr['id_activo']}.png",
                         mime="image/png",
                     )
         else:
-            busqueda_qr = st.text_input("🔍 Filtrar por tag, nombre o ID (opcional)")
+            busqueda_qr = st.text_input("Filtrar por tag, nombre o ID (opcional)")
             filtrados_qr = activos_para_qr
             if busqueda_qr:
                 b = busqueda_qr.lower()
@@ -366,13 +366,13 @@ if "generar_qr" in tabs:
 
             if elegidos_labels:
                 st.write(f"**{len(elegidos_labels)} activo(s) seleccionado(s).**")
-                if st.button(f"🏷️ Generar {len(elegidos_labels)} QR (.zip)", type="primary"):
+                if st.button(f" Generar {len(elegidos_labels)} QR (.zip)", type="primary"):
                     activos_elegidos = [opciones_qr[lbl] for lbl in elegidos_labels]
                     with st.spinner("Generando códigos QR..."):
                         zip_bytes = generar_qr_lote_zip(activos_elegidos)
                     st.success("Listo.")
                     st.download_button(
-                        "⬇️ Descargar todos los QR (.zip)",
+                        " Descargar todos los QR (.zip)",
                         data=zip_bytes,
                         file_name="qr_activos.zip",
                         mime="application/zip",
@@ -380,10 +380,10 @@ if "generar_qr" in tabs:
 
 if "exportar" in tabs:
     with tabs["exportar"]:
-        st.subheader("⬇️ Exportar activos a Excel")
+        st.subheader("Exportar activos a Excel")
         st.caption("Exporta el listado completo de activos (o filtrado) a un archivo Excel descargable.")
 
-        busqueda_export = st.text_input("🔍 Filtrar antes de exportar (opcional)")
+        busqueda_export = st.text_input("Filtrar antes de exportar (opcional)")
         activos_export = list_activos_todos(solo_activos=True)
         if busqueda_export:
             b = busqueda_export.lower()
@@ -400,7 +400,7 @@ if "exportar" in tabs:
             buffer_export.seek(0)
 
             st.download_button(
-                "⬇️ Descargar Excel",
+                " Descargar Excel",
                 data=buffer_export,
                 file_name="activos_exportados.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -411,7 +411,7 @@ if "exportar" in tabs:
 if "listado" in tabs:
     with tabs["listado"]:
         st.subheader("Listado completo — edición rápida")
-        busqueda = st.text_input("🔍 Buscar por tag, nombre o ID")
+        busqueda = st.text_input("Buscar por tag, nombre o ID")
 
         activos = list_activos_todos(solo_activos=True)
         if busqueda:
@@ -438,14 +438,14 @@ if "listado" in tabs:
                         st.caption(f"ID interno: `{a['id_activo']}` (no editable)")
 
                     bcol1, bcol2 = st.columns(2)
-                    if bcol1.button("💾 Guardar cambios", key=f"save_{a['id_activo']}"):
+                    if bcol1.button("Guardar cambios", key=f"save_{a['id_activo']}"):
                         actualizar_activo(a["id_activo"], {
                             "tag": tag_e or None, "nombre": nombre_e, "ubicacion": ubicacion_e or None,
                             "fabricante": fabricante_e or None, "familia": familia_e or None,
                         })
                         st.success("Actualizado.")
                         st.rerun()
-                    if bcol2.button("🗑️ Desactivar", key=f"deact_{a['id_activo']}"):
+                    if bcol2.button("Desactivar", key=f"deact_{a['id_activo']}"):
                         desactivar_activo(a["id_activo"])
                         st.warning("Activo desactivado.")
                         st.rerun()

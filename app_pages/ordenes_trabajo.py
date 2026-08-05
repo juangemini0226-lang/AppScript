@@ -20,7 +20,7 @@ if "usuario" not in st.session_state:
 
 usuario = st.session_state["usuario"]
 
-st.title("🛠️ Órdenes de Trabajo")
+st.title("Órdenes de Trabajo")
 
 tabs = build_tabs("ordenes_trabajo", usuario["rol"])
 
@@ -31,7 +31,7 @@ if "kanban" in tabs:
         cols = st.columns(len(ESTADOS_OT))
         for col, estado in zip(cols, ESTADOS_OT):
             with col:
-                st.metric(estado.replace("_", " "), conteos.get(estado, 0))
+                st.metric(estado.replace("_", ""), conteos.get(estado, 0))
                 ordenes_col = list_ot(estado=estado, limit=10)
                 for ot in ordenes_col:
                     color = colores_prioridad.get(ot.get("prioridad"), "#bbb")

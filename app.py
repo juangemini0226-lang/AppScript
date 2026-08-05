@@ -12,8 +12,8 @@ from services.admin_service import is_module_visible_for_role
 from services.dashboard_service import get_kpis
 
 st.set_page_config(
-    page_title="CMMS FLA-EICE · Línea 3 Envasado",
-    page_icon="🛠️",
+    page_title="Estra - Mtto",
+    page_icon="",
     layout="wide",
 )
 st.markdown("""
@@ -86,6 +86,51 @@ st.markdown("""
     section[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][aria-current="page"] {
         background-color: rgba(232, 164, 59, 0.16);
         border-left: 3px solid var(--ambar);
+    }
+    /* Encabezados de sección del menú (General / Operación / Administración) */
+    section[data-testid="stSidebar"] [data-testid="stNavSectionHeader"] {
+        font-family: 'IBM Plex Mono', monospace !important;
+        font-size: 0.68rem !important;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #6B7686 !important;
+        margin-top: 0.6rem;
+    }
+    section[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] {
+        border-radius: 4px;
+        font-size: 0.92rem;
+    }
+
+    /* ---- Multiselect: pastillas con la paleta del sistema, no el
+       rojo/azul genérico de BaseWeb ---- */
+    span[data-baseweb="tag"] {
+        background-color: var(--acero) !important;
+        border-radius: 4px !important;
+    }
+
+    /* ---- Sliders y checkboxes/toggles con el acento ámbar ---- */
+    div[data-testid="stSlider"] [role="slider"] {
+        background-color: var(--ambar) !important;
+        border-color: var(--ambar) !important;
+    }
+    div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div {
+        background-color: var(--ambar) !important;
+    }
+    label[data-baseweb="checkbox"] span {
+        border-color: var(--acero) !important;
+    }
+
+    /* ---- Selectbox / multiselect: bordes consistentes con el resto ---- */
+    div[data-baseweb="select"] > div {
+        border-radius: 6px !important;
+        border-color: var(--borde) !important;
+    }
+
+    /* ---- Cargador de archivos ---- */
+    section[data-testid="stFileUploaderDropzone"] {
+        border: 1.5px dashed var(--acero);
+        border-radius: 8px;
+        background-color: #F9FAFB;
     }
 
     /* ---- Tarjetas de métricas (dashboard) ---- */
@@ -193,7 +238,7 @@ def _login_form():
         </p>
         <h1 style="font-family:'Oswald',sans-serif;color:#F5F6F8 !important;font-size:2.2rem;
                    margin:0;border:none;padding:0;letter-spacing:0.02em;">
-            FLA-EICE
+            ESTRA - MTTO
         </h1>
         <p style="font-family:'IBM Plex Sans',sans-serif;color:#B8C1CC;font-size:0.95rem;margin:6px 0 0 0;">
             Línea 3 · Envasado · Control de piso de mantenimiento
@@ -231,7 +276,7 @@ def _home_page():
     st.markdown("""
     <p style="font-family:'IBM Plex Mono',monospace;color:#5B6472;font-size:0.75rem;
               letter-spacing:0.1em;text-transform:uppercase;margin:0 0 4px 0;">
-        FLA-EICE · Línea 3 · Envasado
+        ESTRA - MTTO
     </p>
     """, unsafe_allow_html=True)
     st.title("Panel de control")
@@ -289,24 +334,27 @@ def _build_navigation():
     usuario = st.session_state["usuario"]
     rol = usuario["rol"]
 
-    home = st.Page(_home_page, title="Inicio", icon="🏠", default=True)
-    pages = [home]
+    home = st.Page(_home_page, title="Inicio", icon="", default=True)
 
+    operacion = []
     if is_module_visible_for_role("activos", rol):
-        pages.append(st.Page("app_pages/activos.py", title="Activos", icon="🏭"))
+        operacion.append(st.Page("app_pages/activos.py", title="Activos", icon=""))
     if is_module_visible_for_role("ordenes_trabajo", rol):
-        pages.append(st.Page("app_pages/ordenes_trabajo.py", title="Órdenes de Trabajo", icon="🛠️"))
+        operacion.append(st.Page("app_pages/ordenes_trabajo.py", title="Órdenes de trabajo", icon=""))
     if is_module_visible_for_role("novedades", rol):
-        pages.append(st.Page("app_pages/novedades.py", title="Novedades", icon="📋"))
+        operacion.append(st.Page("app_pages/novedades.py", title="Novedades", icon=""))
     if is_module_visible_for_role("maquilas", rol):
-        pages.append(st.Page("app_pages/maquilas.py", title="Maquilas", icon="🏗️"))
+        operacion.append(st.Page("app_pages/maquilas.py", title="Maquilas", icon=""))
     if is_module_visible_for_role("mapa_planta", rol):
-        pages.append(st.Page("app_pages/mapa_planta.py", title="Mapa de planta", icon="🗺️"))
+        operacion.append(st.Page("app_pages/mapa_planta.py", title="Mapa de planta", icon=""))
 
+    secciones = {"General": [home]}
+    if operacion:
+        secciones["Operación"] = operacion
     if rol in ("PLANEADOR", "AUDITOR"):
-        pages.append(st.Page("app_pages/admin.py", title="Admin", icon="⚙️"))
+        secciones["Administración"] = [st.Page("app_pages/admin.py", title="Admin", icon="")]
 
-    return st.navigation(pages)
+    return st.navigation(secciones)
 
 
 def main():
@@ -329,7 +377,7 @@ def main():
             </p>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("🚪 Cerrar sesión", use_container_width=True):
+        if st.button("Cerrar sesión", use_container_width=True):
             del st.session_state["usuario"]
             st.rerun()
 

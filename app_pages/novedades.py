@@ -18,7 +18,7 @@ if "usuario" not in st.session_state:
 
 usuario = st.session_state["usuario"]
 
-st.title("📋 Novedades")
+st.title("Novedades")
 
 tabs = build_tabs("novedades", usuario["rol"])
 
@@ -81,7 +81,7 @@ if "tablero" in tabs:
                     st.write(f"**Fecha:** {n.get('fecha', '—')}")
 
                     if n.get("estado") == "ASIGNADA":
-                        if st.button("⚡ Convertir en OT", key=f"conv_{n['id_nov']}"):
+                        if st.button("Convertir en OT", key=f"conv_{n['id_nov']}"):
                             resultado = crear_ot({
                                 "novedad_id": n["id_nov"],
                                 "equipo_id": n.get("equipo_id"),

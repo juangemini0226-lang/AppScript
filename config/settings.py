@@ -34,7 +34,7 @@ def get_settings() -> dict:
         },
 
         "app": {
-            "empresa": s.get("app", {}).get("empresa", "FLA-EICE"),
+            "empresa": s.get("app", {}).get("empresa", "Estra"),
             "linea": s.get("app", {}).get("linea", "Línea 3 - Envasado"),
             "timezone": s.get("app", {}).get("timezone", "America/Bogota"),
         },

@@ -30,7 +30,7 @@ if "usuario" not in st.session_state:
     st.warning("Inicia sesión desde la página principal.")
     st.stop()
 
-st.title("🗺️ Mapa de planta")
+st.title("Mapa de planta")
 
 usuario = st.session_state["usuario"]
 tabs = build_tabs("mapa_planta", usuario["rol"])
@@ -75,13 +75,13 @@ def _fondo_html(ancho=900, alto=550):
 if "ver_mapa" in tabs:
     with tabs["ver_mapa"]:
         if not imagen_actual:
-            st.info("Todavía no has subido una foto de la planta — ve a la pestaña '🖼️ Foto de planta'.")
+            st.info("Todavía no has subido una foto de la planta — ve a la pestaña ' Foto de planta'.")
         else:
             st.markdown(_fondo_html(), unsafe_allow_html=True)
 
         activos_con_pos = [a for a in activos if a.get("pos_x") is not None and a.get("pos_y") is not None]
         if activos_con_pos:
-            with st.expander(f"📋 Ver lista de ubicaciones ({len(activos_con_pos)})"):
+            with st.expander(f" Ver lista de ubicaciones ({len(activos_con_pos)})"):
                 tabla = [{"Activo": a.get("tag") or a["nombre"], "Nombre": a["nombre"],
                            "Zona": a.get("zona") or "—", "Ubicación actual": a.get("ubicacion") or "—"}
                           for a in activos_con_pos]
@@ -104,7 +104,7 @@ if "foto_planta" in tabs:
 
         nueva_imagen = st.file_uploader("Subir/reemplazar imagen", type=["png", "jpg", "jpeg"])
         if nueva_imagen is not None:
-            if st.button("💾 Guardar esta imagen como fondo del mapa"):
+            if st.button("Guardar esta imagen como fondo del mapa"):
                 set_imagen_planta(nueva_imagen.getvalue(), nueva_imagen.type)
                 st.success("Imagen guardada. Ve a 'Ver mapa' para verla.")
                 st.rerun()
@@ -119,9 +119,9 @@ if "zonas" in tabs:
         )
 
         if not imagen_actual:
-            st.warning("Sube primero una foto en '🖼️ Foto de planta' para poder ubicar zonas sobre ella.")
+            st.warning("Sube primero una foto en ' Foto de planta' para poder ubicar zonas sobre ella.")
 
-        with st.expander("➕ Crear zona nueva", expanded=not zonas):
+        with st.expander("Crear zona nueva", expanded=not zonas):
             col1, col2 = st.columns(2)
             with col1:
                 nombre_zona = st.text_input("Nombre de la zona (ej: Bodega A, Taller, Línea 3)")
@@ -152,7 +152,7 @@ if "zonas" in tabs:
             </div>
             """, unsafe_allow_html=True)
 
-            if st.button("💾 Crear esta zona"):
+            if st.button("Crear esta zona"):
                 if not nombre_zona:
                     st.error("Ponle un nombre a la zona.")
                 else:
@@ -164,7 +164,7 @@ if "zonas" in tabs:
             st.divider()
             st.write("**Zonas existentes:**")
             for z in zonas:
-                with st.expander(f"🟦 {z['nombre']}"):
+                with st.expander(f" {z['nombre']}"):
                     col1, col2 = st.columns(2)
                     with col1:
                         nombre_e = st.text_input("Nombre", value=z["nombre"], key=f"zn_{z['id_zona']}")
@@ -176,11 +176,11 @@ if "zonas" in tabs:
                         y2_e = st.slider("Y final (%)", 0, 100, int(z["y2"]), key=f"zy2_{z['id_zona']}")
 
                     bcol1, bcol2 = st.columns(2)
-                    if bcol1.button("💾 Guardar cambios", key=f"zsave_{z['id_zona']}"):
+                    if bcol1.button("Guardar cambios", key=f"zsave_{z['id_zona']}"):
                         actualizar_zona(z["id_zona"], nombre_e, x1_e, y1_e, x2_e, y2_e, color_e)
                         st.success("Zona actualizada.")
                         st.rerun()
-                    if bcol2.button("🗑️ Eliminar zona", key=f"zdel_{z['id_zona']}"):
+                    if bcol2.button("Eliminar zona", key=f"zdel_{z['id_zona']}"):
                         eliminar_zona(z["id_zona"])
                         st.warning("Zona eliminada.")
                         st.rerun()
@@ -191,9 +191,9 @@ if "ubicar_activo" in tabs:
         if not activos:
             st.info("No hay activos registrados todavía.")
         elif not zonas:
-            st.warning("Crea al menos una zona primero, en la pestaña '🟦 Zonas'.")
+            st.warning("Crea al menos una zona primero, en la pestaña ' Zonas'.")
         else:
-            busqueda_ubicar = st.text_input("🔍 Buscar activo por tag, nombre o ID", key="busq_ubicar")
+            busqueda_ubicar = st.text_input("Buscar activo por tag, nombre o ID", key="busq_ubicar")
             activos_filtrados = activos
             if busqueda_ubicar:
                 b = busqueda_ubicar.lower()
@@ -247,7 +247,7 @@ if "ubicar_activo" in tabs:
                     </div>
                     """, unsafe_allow_html=True)
 
-                    if st.button("💾 Guardar ubicación"):
+                    if st.button("Guardar ubicación"):
                         actualizar_activo(activo_sel["id_activo"], {
                             "zona": zona_sel["nombre"],
                             "ubicacion": zona_sel["nombre"],

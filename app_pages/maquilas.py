@@ -18,13 +18,13 @@ if "usuario" not in st.session_state:
 
 usuario = st.session_state["usuario"]
 
-st.title("🏗️ Maquilas")
+st.title("Maquilas")
 
 tabs = build_tabs("maquilas", usuario["rol"])
 
 if "historial" in tabs:
     with tabs["historial"]:
-        molde_filtro = st.text_input("🔍 Filtrar por ID de molde (opcional)")
+        molde_filtro = st.text_input("Filtrar por ID de molde (opcional)")
         registros = list_registros(molde_id=molde_filtro or None)
         if registros:
             st.dataframe(registros, use_container_width=True, hide_index=True)

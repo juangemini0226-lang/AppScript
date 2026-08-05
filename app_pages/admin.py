@@ -31,11 +31,11 @@ if st.session_state["usuario"]["rol"] not in ("PLANEADOR", "AUDITOR"):
     st.error("No tienes permisos para ver esta sección.")
     st.stop()
 
-st.title("⚙️ Administración")
+st.title("Administración")
 
 tab_modulos, tab_subfunciones, tab_usuarios, tab_crear_usuario, tab_jerarquia, tab_db, tab_activos_masivo = st.tabs(
-    ["Módulos de la app", "🔐 Permisos por sub-función", "Usuarios", "➕ Crear usuario", "🧬 Jerarquía ISO 14224",
-     "🗄️ Explorador de base de datos", "🗑️ Gestión masiva de activos"]
+    ["Módulos de la app", " Permisos por sub-función", "Usuarios", " Crear usuario", " Jerarquía ISO 14224",
+     " Explorador de base de datos", " Gestión masiva de activos"]
 )
 
 with tab_modulos:
@@ -89,7 +89,7 @@ with tab_usuarios:
         with col4:
             activo = st.checkbox("Activo", value=bool(u.get("activo", True)), key=f"act_{u['id_usuario']}")
         with col5:
-            if st.button("🗑️", key=f"del_{u['id_usuario']}", help="Eliminar definitivamente"):
+            if st.button("", key=f"del_{u['id_usuario']}", help="Eliminar definitivamente"):
                 st.session_state[f"confirmar_del_{u['id_usuario']}"] = True
 
         if st.session_state.get(f"confirmar_del_{u['id_usuario']}"):
@@ -130,7 +130,7 @@ with tab_crear_usuario:
             st.success(f"Usuario creado: {resultado['id_usuario']} — {resultado['nombre']}")
 
 with tab_db:
-    st.subheader("🗄️ Explorador de base de datos")
+    st.subheader("Explorador de base de datos")
     st.caption(
         "Solo lectura: puedes ver el contenido de cualquier tabla y correr "
         "consultas SELECT. No se permite insertar, editar ni borrar desde aquí "
@@ -158,7 +158,7 @@ with tab_db:
         st.caption("Ejemplo: SELECT * FROM ot WHERE prioridad = 'ALTA' ORDER BY fecha DESC")
         sql_input = st.text_area("Consulta SQL (solo SELECT)", height=100,
                                    placeholder="SELECT * FROM activos WHERE tipo = 'MOLDE'")
-        if st.button("▶️ Ejecutar consulta"):
+        if st.button("▶ Ejecutar consulta"):
             if not sql_input.strip():
                 st.warning("Escribe una consulta primero.")
             else:
@@ -175,7 +175,7 @@ with tab_db:
                     st.error(f"Error en la consulta: {e}")
 
 with tab_jerarquia:
-    st.subheader("🧬 Jerarquía técnica y clasificación ISO 14224")
+    st.subheader("Jerarquía técnica y clasificación ISO 14224")
     st.caption(
         "ISO 14224 clasifica cada nivel del equipo como Unidad de equipo, "
         "Subunidad, Componente o Ítem mantenible. Esto es adicional al tipo "
@@ -183,7 +183,7 @@ with tab_jerarquia:
     )
 
     sub_nodos, sub_crear_nodo, sub_tipos = st.tabs(
-        ["Nodos existentes", "➕ Crear nodo", "Catálogo de tipos de activo"]
+        ["Nodos existentes", " Crear nodo", "Catálogo de tipos de activo"]
     )
 
     with sub_nodos:
@@ -210,12 +210,12 @@ with tab_jerarquia:
                         )
 
                     bcol1, bcol2 = st.columns(2)
-                    if bcol1.button("💾 Guardar", key=f"jsave_{n['id_activo']}"):
+                    if bcol1.button("Guardar", key=f"jsave_{n['id_activo']}"):
                         clase_final = None if clase_e == "(sin clasificar)" else clase_e
                         actualizar_nodo(n["id_activo"], nombre_e, tipo_e, clase_final)
                         st.success("Actualizado.")
                         st.rerun()
-                    if bcol2.button("🗑️ Desactivar", key=f"jdeact_{n['id_activo']}"):
+                    if bcol2.button("Desactivar", key=f"jdeact_{n['id_activo']}"):
                         desactivar_nodo(n["id_activo"])
                         st.warning("Nodo desactivado.")
                         st.rerun()
@@ -262,7 +262,7 @@ with tab_jerarquia:
                 st.success(f"Tipo de activo creado: {resultado['nombre']}")
 
 with tab_activos_masivo:
-    st.subheader("🗑️ Gestión masiva de activos")
+    st.subheader("Gestión masiva de activos")
     st.warning(
         "Exclusivo de Admin. Útil para limpiar cargas de prueba o datos "
         "erróneos. El borrado definitivo NO se puede deshacer — si solo "
@@ -270,7 +270,7 @@ with tab_activos_masivo:
         "masivamente' en vez de eliminar."
     )
 
-    busqueda_masiva = st.text_input("🔍 Filtrar por tag, nombre o ID (para achicar la lista)")
+    busqueda_masiva = st.text_input("Filtrar por tag, nombre o ID (para achicar la lista)")
     todos_los_activos = list_activos_todos(solo_activos=True)
 
     if busqueda_masiva:
@@ -304,7 +304,7 @@ with tab_activos_masivo:
         st.write(f"**{len(ids_seleccionados)} activo(s) seleccionado(s).**")
 
         st.divider()
-        st.write("**✏️ Editar un campo en lote** (aplica el mismo valor a todos los seleccionados)")
+        st.write("** Editar un campo en lote** (aplica el mismo valor a todos los seleccionados)")
         col_campo, col_valor, col_btn = st.columns([1, 2, 1])
         with col_campo:
             campo_masivo = st.selectbox("Campo", ["zona", "tipoactivo", "familia", "fabricante"])
@@ -313,7 +313,7 @@ with tab_activos_masivo:
         with col_btn:
             st.write("")
             st.write("")
-            if st.button("✏️ Aplicar a todos"):
+            if st.button("Aplicar a todos"):
                 if not valor_masivo:
                     st.error("Escribe un valor.")
                 else:
@@ -325,14 +325,14 @@ with tab_activos_masivo:
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("🚫 Desactivar seleccionados (reversible)"):
+            if st.button("Desactivar seleccionados (reversible)"):
                 for id_act in ids_seleccionados:
                     desactivar_activo(id_act)
                 st.success(f"{len(ids_seleccionados)} activo(s) desactivado(s).")
                 st.rerun()
 
         with col2:
-            if st.button("🗑️ Eliminar DEFINITIVAMENTE", type="primary"):
+            if st.button("Eliminar DEFINITIVAMENTE", type="primary"):
                 st.session_state["confirmar_borrado_masivo"] = True
 
         if st.session_state.get("confirmar_borrado_masivo"):
@@ -351,7 +351,7 @@ with tab_activos_masivo:
                 st.rerun()
 
 with tab_subfunciones:
-    st.subheader("🔐 Permisos por sub-función (dentro de cada módulo)")
+    st.subheader("Permisos por sub-función (dentro de cada módulo)")
     st.caption(
         "Control más fino que 'Módulos de la app': aquí prendes/apagas "
         "pestañas o funciones ESPECÍFICAS dentro de un módulo, y eliges "
