@@ -11,10 +11,12 @@ import streamlit as st
 
 from services.admin_service import (
     list_usuarios, crear_usuario, actualizar_usuario, set_usuario_activo, eliminar_usuario,
-    list_feature_flags, set_feature_flag, MODULOS_DISPONIBLES, ROLES_DISPONIBLES,
+    list_feature_flags, set_feature_flag, MODULOS_DISPONIBLES, get_roles_disponibles,
     get_feature_flags_full, set_feature_flag_full,
     SUBFEATURES_CATALOGO, get_subfeatures_full, set_subfeature_full,
-    list_tables, get_table_preview, get_table_row_count, run_readonly_query,
+    list_tables, get_table_preview, get_table_row_count, run_readonly_query, run_admin_query,
+    list_roles_completo, crear_rol, eliminar_rol,
+    list_roles_pines, asignar_pin_rol, quitar_pin_rol,
 )
 from services.activos_service import list_activos_todos, eliminar_activos_bulk, desactivar_activo, editar_campo_bulk
 from services.jerarquia_service import (
@@ -33,8 +35,8 @@ if st.session_state["usuario"]["rol"] not in ("PLANEADOR", "AUDITOR"):
 
 st.title("Administración")
 
-tab_modulos, tab_subfunciones, tab_usuarios, tab_crear_usuario, tab_jerarquia, tab_db, tab_activos_masivo = st.tabs(
-    ["Módulos de la app", " Permisos por sub-función", "Usuarios", " Crear usuario", " Jerarquía ISO 14224",
+tab_modulos, tab_subfunciones, tab_usuarios, tab_crear_usuario, tab_roles_pines, tab_jerarquia, tab_db, tab_activos_masivo = st.tabs(
+    ["Módulos de la app", " Permisos por sub-función", "Usuarios", " Crear usuario", "Roles y PINes", " Jerarquía ISO 14224",
      " Explorador de base de datos", " Gestión masiva de activos"]
 )
 
@@ -49,7 +51,7 @@ with tab_modulos:
     flags_full = get_feature_flags_full()
     for modulo in MODULOS_DISPONIBLES:
         key = modulo["key"]
-        info = flags_full.get(key, {"activo": True, "roles": ROLES_DISPONIBLES})
+        info = flags_full.get(key, {"activo": True, "roles": get_roles_disponibles()})
 
         st.markdown(f"**{modulo['label']}**")
         col1, col2 = st.columns([1, 3])
@@ -57,7 +59,7 @@ with tab_modulos:
             nuevo_activo = st.toggle("Activo", value=info["activo"], key=f"flag_{key}")
         with col2:
             nuevos_roles = st.multiselect(
-                "Visible para estos roles", ROLES_DISPONIBLES,
+                "Visible para estos roles", get_roles_disponibles(),
                 default=info["roles"], key=f"roles_{key}",
                 label_visibility="collapsed",
             )
@@ -81,9 +83,9 @@ with tab_usuarios:
             st.text(u["correo"])
         with col3:
             nuevo_rol = st.selectbox(
-                "Rol", ["TECNICO", "TECNICO_B", "TECNICO_MONTAJE", "PLANEADOR", "AUDITOR"],
-                index=["TECNICO", "TECNICO_B", "TECNICO_MONTAJE", "PLANEADOR", "AUDITOR"].index(u["rol"])
-                if u["rol"] in ["TECNICO", "TECNICO_B", "TECNICO_MONTAJE", "PLANEADOR", "AUDITOR"] else 0,
+                "Rol", get_roles_disponibles(),
+                index=get_roles_disponibles().index(u["rol"])
+                if u["rol"] in get_roles_disponibles() else 0,
                 key=f"rol_{u['id_usuario']}", label_visibility="collapsed",
             )
         with col4:
@@ -119,7 +121,7 @@ with tab_crear_usuario:
     with st.form("crear_usuario_form", clear_on_submit=True):
         nombre = st.text_input("Nombre completo *")
         correo = st.text_input("Correo *")
-        rol = st.selectbox("Rol *", ["TECNICO", "TECNICO_B", "TECNICO_MONTAJE", "PLANEADOR", "AUDITOR"])
+        rol = st.selectbox("Rol *", get_roles_disponibles())
         enviado = st.form_submit_button("Crear usuario")
 
     if enviado:
@@ -156,11 +158,47 @@ with tab_db:
 
     with sub_sql:
         st.caption("Ejemplo: SELECT * FROM ot WHERE prioridad = 'ALTA' ORDER BY fecha DESC")
-        sql_input = st.text_area("Consulta SQL (solo SELECT)", height=100,
-                                   placeholder="SELECT * FROM activos WHERE tipo = 'MOLDE'")
-        if st.button("▶ Ejecutar consulta"):
+
+        modo_escritura = st.toggle(
+            "Modo escritura (permite INSERT / UPDATE / DELETE / ALTER...)",
+            value=False,
+        )
+
+        if modo_escritura:
+            st.error(
+                "Modo escritura activo. Cualquier sentencia SQL se ejecuta "
+                "directamente sobre la base de datos real, sin red de "
+                "seguridad. Un error aquí puede modificar o borrar datos "
+                "de forma permanente."
+            )
+            confirmar_escritura = st.checkbox(
+                "Entiendo el riesgo y quiero ejecutar SQL de escritura de todas formas."
+            )
+        else:
+            confirmar_escritura = False
+
+        sql_input = st.text_area(
+            "Consulta SQL" + (" (modo escritura activo)" if modo_escritura else " (solo SELECT)"),
+            height=100,
+            placeholder="SELECT * FROM activos WHERE tipo = 'MOLDE'",
+        )
+
+        if st.button("Ejecutar"):
             if not sql_input.strip():
                 st.warning("Escribe una consulta primero.")
+            elif modo_escritura and not confirmar_escritura:
+                st.warning("Marca la casilla de confirmación antes de ejecutar en modo escritura.")
+            elif modo_escritura:
+                try:
+                    resultado = run_admin_query(sql_input)
+                    filas = resultado.get("filas", [])
+                    if filas:
+                        st.success(f"Ejecutado. {len(filas)} fila(s) devueltas.")
+                        st.dataframe(filas, use_container_width=True, hide_index=True)
+                    else:
+                        st.success("Ejecutado correctamente (sin filas para mostrar).")
+                except Exception as e:
+                    st.error(f"Error ejecutando la sentencia: {e}")
             else:
                 try:
                     resultado = run_readonly_query(sql_input)
@@ -370,7 +408,7 @@ with tab_subfunciones:
 
     for sf in catalogo_modulo:
         key = sf["key"]
-        info = subfeatures_full.get(key, {"activo": True, "roles": ROLES_DISPONIBLES})
+        info = subfeatures_full.get(key, {"activo": True, "roles": get_roles_disponibles()})
 
         st.markdown(f"**{sf['label']}**")
         col1, col2 = st.columns([1, 3])
@@ -378,7 +416,7 @@ with tab_subfunciones:
             nuevo_activo_sf = st.toggle("Activo", value=info["activo"], key=f"sfflag_{modulo_elegido}_{key}")
         with col2:
             nuevos_roles_sf = st.multiselect(
-                "Visible para estos roles", ROLES_DISPONIBLES,
+                "Visible para estos roles", get_roles_disponibles(),
                 default=info["roles"], key=f"sfroles_{modulo_elegido}_{key}",
                 label_visibility="collapsed",
             )
@@ -388,3 +426,104 @@ with tab_subfunciones:
             st.success(f"'{sf['label']}' actualizado.")
             st.rerun()
         st.divider()
+
+with tab_roles_pines:
+    st.subheader("Roles y PINes de acceso rápido")
+
+    sub_roles, sub_pines = st.tabs(["Roles", "PINes de acceso rápido"])
+
+    with sub_roles:
+        st.caption(
+            "Estos son los roles que existen en el sistema. Puedes crear "
+            "roles nuevos (además de los 5 originales) — aparecerán "
+            "automáticamente en todos los selectores de rol de la app "
+            "(usuarios, permisos de módulos, permisos de sub-función)."
+        )
+
+        roles_actuales = list_roles_completo()
+        if roles_actuales:
+            st.dataframe(roles_actuales, use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.write("Crear un rol nuevo")
+        with st.form("crear_rol_form", clear_on_submit=True):
+            rol_key_nuevo = st.text_input(
+                "Identificador del rol (sin espacios, ej: SUPERVISOR)",
+            )
+            rol_nombre_nuevo = st.text_input("Nombre visible (ej: Supervisor de turno)")
+            rol_desc_nuevo = st.text_input("Descripción (opcional)")
+            enviado_rol = st.form_submit_button("Crear rol")
+
+        if enviado_rol:
+            if not rol_key_nuevo or not rol_nombre_nuevo:
+                st.error("El identificador y el nombre son obligatorios.")
+            else:
+                crear_rol(rol_key_nuevo, rol_nombre_nuevo, rol_desc_nuevo)
+                st.success(f"Rol '{rol_nombre_nuevo}' creado.")
+                st.rerun()
+
+        st.divider()
+        st.write("Eliminar un rol")
+        st.caption(
+            "Ojo: si hay usuarios con este rol asignado, no se les cambia "
+            "el rol automáticamente — revisa primero en la pestaña Usuarios."
+        )
+        if roles_actuales:
+            rol_a_borrar = st.selectbox(
+                "Rol a eliminar", roles_actuales, format_func=lambda r: r["nombre"], key="rol_borrar_sel"
+            )
+            if st.button("Eliminar este rol"):
+                eliminar_rol(rol_a_borrar["rol_key"])
+                st.warning(f"Rol '{rol_a_borrar['nombre']}' eliminado.")
+                st.rerun()
+
+    with sub_pines:
+        st.caption(
+            "El PIN de acceso rápido identifica un ROL, no a una persona "
+            "puntual — se usa en planta para entrar sin escribir el correo. "
+            "Un rol solo puede tener un PIN a la vez."
+        )
+
+        pines_actuales = list_roles_pines()
+        if pines_actuales:
+            st.dataframe(
+                [{"Rol": p["rol_nombre"], "PIN": p["pin"], "Nombre que ve el usuario": p["nombre_generico"]}
+                 for p in pines_actuales],
+                use_container_width=True, hide_index=True,
+            )
+        else:
+            st.info("Todavía no hay PINes asignados.")
+
+        st.divider()
+        st.write("Asignar o cambiar el PIN de un rol")
+
+        roles_para_pin = list_roles_completo()
+        if not roles_para_pin:
+            st.warning("Primero crea o revisa que existan roles en la pestaña 'Roles'.")
+        else:
+            with st.form("asignar_pin_form", clear_on_submit=True):
+                rol_para_pin = st.selectbox("Rol", roles_para_pin, format_func=lambda r: r["nombre"])
+                pin_nuevo = st.text_input("PIN (4 dígitos recomendado)", max_chars=10)
+                nombre_generico_nuevo = st.text_input(
+                    "Nombre que verá quien entre con este PIN (ej: Técnico de turno)"
+                )
+                enviado_pin = st.form_submit_button("Guardar PIN")
+
+            if enviado_pin:
+                if not pin_nuevo:
+                    st.error("El PIN es obligatorio.")
+                else:
+                    asignar_pin_rol(rol_para_pin["rol_key"], pin_nuevo, nombre_generico_nuevo or rol_para_pin["nombre"])
+                    st.success(f"PIN asignado al rol '{rol_para_pin['nombre']}'.")
+                    st.rerun()
+
+        st.divider()
+        st.write("Quitar el PIN de un rol (ese rol deja de tener acceso rápido)")
+        if pines_actuales:
+            rol_quitar_pin = st.selectbox(
+                "Rol", pines_actuales, format_func=lambda p: p["rol_nombre"], key="rol_quitar_pin_sel"
+            )
+            if st.button("Quitar PIN"):
+                quitar_pin_rol(rol_quitar_pin["rol_key"])
+                st.warning(f"Se quitó el PIN del rol '{rol_quitar_pin['rol_nombre']}'.")
+                st.rerun()

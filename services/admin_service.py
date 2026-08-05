@@ -25,7 +25,84 @@ MODULOS_DISPONIBLES = [
     {"key": "mapa_planta", "label": "Mapa de planta"},
 ]
 
-ROLES_DISPONIBLES = ["TECNICO", "TECNICO_B", "TECNICO_MONTAJE", "PLANEADOR", "AUDITOR"]
+_ROLES_POR_DEFECTO = ["TECNICO", "TECNICO_B", "TECNICO_MONTAJE", "PLANEADOR", "AUDITOR"]
+
+
+def get_roles_disponibles() -> list[str]:
+    """
+    Lista de roles reales, tomada de la tabla `roles` (administrable
+    desde Admin → Roles y PINs). Si la tabla todavía no existe o está
+    vacía (antes de correr schema_updates_8.sql), cae a los 5 roles
+    originales para no romper nada.
+    """
+    try:
+        db = get_connector()
+        rows = db.fetch_all("roles", order_by="nombre")
+        if rows:
+            return [r["rol_key"] for r in rows]
+    except Exception:
+        pass
+    return list(_ROLES_POR_DEFECTO)
+
+
+def list_roles_completo() -> list[dict]:
+    db = get_connector()
+    return db.fetch_all("roles", order_by="nombre")
+
+
+def crear_rol(rol_key: str, nombre: str, descripcion: str) -> dict:
+    db = get_connector()
+    rol_key = rol_key.strip().upper().replace(" ", "_")
+    registro = {"rol_key": rol_key, "nombre": nombre, "descripcion": descripcion}
+    return db.insert("roles", registro)
+
+
+def eliminar_rol(rol_key: str) -> int:
+    """
+    Borra un rol del catálogo. No borra usuarios que ya lo tengan
+    asignado (quedarían con un rol 'huérfano' visible pero sin
+    catálogo) — revisa primero que nadie lo esté usando.
+    """
+    db = get_connector()
+    db.delete("roles_pines", where={"rol_key": rol_key})
+    return db.delete("roles", where={"rol_key": rol_key})
+
+
+# ----------------------------------------------------------------------
+# PINES DE ACCESO RÁPIDO POR ROL
+# ----------------------------------------------------------------------
+
+def list_roles_pines() -> list[dict]:
+    """Los PINes actuales, con el nombre del rol al que pertenecen."""
+    db = get_connector()
+    return db.execute_raw(
+        "SELECT rp.rol_key, rp.pin, rp.nombre_generico, r.nombre as rol_nombre "
+        "FROM roles_pines rp JOIN roles r ON r.rol_key = rp.rol_key "
+        "ORDER BY r.nombre"
+    )
+
+
+def asignar_pin_rol(rol_key: str, pin: str, nombre_generico: str) -> None:
+    db = get_connector()
+    pin = str(pin).strip()
+    existente = db.fetch_one("roles_pines", where={"rol_key": rol_key})
+    data = {"pin": pin, "nombre_generico": nombre_generico}
+    if existente:
+        db.update("roles_pines", where={"rol_key": rol_key}, data=data)
+    else:
+        db.insert("roles_pines", {"rol_key": rol_key, **data})
+
+
+def quitar_pin_rol(rol_key: str) -> int:
+    db = get_connector()
+    return db.delete("roles_pines", where={"rol_key": rol_key})
+
+
+# Se mantiene por compatibilidad con el resto del código, pero ya NO es
+# una lista fija: se recalcula en cada import a partir de los roles por
+# defecto. Las funciones de abajo usan get_roles_disponibles() (la
+# versión dinámica real) en el momento de necesitarla.
+ROLES_DISPONIBLES = list(_ROLES_POR_DEFECTO)
 
 
 # ----------------------------------------------------------------------
@@ -115,18 +192,18 @@ def get_feature_flags_full() -> dict[str, dict]:
         row = por_key.get(key)
         if row:
             roles_raw = (row.get("roles_permitidos") or "TODOS").strip()
-            roles = ROLES_DISPONIBLES if roles_raw == "TODOS" else \
+            roles = get_roles_disponibles() if roles_raw == "TODOS" else \
                 [r.strip() for r in roles_raw.split(",") if r.strip()]
             resultado[key] = {"activo": bool(row.get("activo", True)), "roles": roles}
         else:
-            resultado[key] = {"activo": True, "roles": list(ROLES_DISPONIBLES)}
+            resultado[key] = {"activo": True, "roles": list(get_roles_disponibles())}
     return resultado
 
 
 def set_feature_flag_full(feature_key: str, activo: bool, roles: list[str]) -> None:
     """Guarda el interruptor global Y la lista de roles que pueden ver el módulo."""
     db = get_connector()
-    roles_str = "TODOS" if set(roles) >= set(ROLES_DISPONIBLES) else ",".join(roles)
+    roles_str = "TODOS" if set(roles) >= set(get_roles_disponibles()) else ",".join(roles)
     existente = db.fetch_one("feature_flags", where={"feature_key": feature_key})
     data = {"activo": activo, "roles_permitidos": roles_str}
     if existente:
@@ -137,7 +214,7 @@ def set_feature_flag_full(feature_key: str, activo: bool, roles: list[str]) -> N
 
 def is_module_visible_for_role(feature_key: str, rol: str) -> bool:
     """Combina el interruptor global con la lista de roles permitidos."""
-    info = get_feature_flags_full().get(feature_key, {"activo": True, "roles": ROLES_DISPONIBLES})
+    info = get_feature_flags_full().get(feature_key, {"activo": True, "roles": get_roles_disponibles()})
     return info["activo"] and (rol in info["roles"])
 
 
@@ -197,17 +274,17 @@ def get_subfeatures_full(modulo_key: str) -> dict[str, dict]:
         row = por_key.get(key)
         if row:
             roles_raw = (row.get("roles_permitidos") or "TODOS").strip()
-            roles = ROLES_DISPONIBLES if roles_raw == "TODOS" else \
+            roles = get_roles_disponibles() if roles_raw == "TODOS" else \
                 [r.strip() for r in roles_raw.split(",") if r.strip()]
             resultado[key] = {"activo": bool(row.get("activo", True)), "roles": roles}
         else:
-            resultado[key] = {"activo": True, "roles": list(ROLES_DISPONIBLES)}
+            resultado[key] = {"activo": True, "roles": list(get_roles_disponibles())}
     return resultado
 
 
 def set_subfeature_full(modulo_key: str, sub_feature_key: str, activo: bool, roles: list[str]) -> None:
     db = get_connector()
-    roles_str = "TODOS" if set(roles) >= set(ROLES_DISPONIBLES) else ",".join(roles)
+    roles_str = "TODOS" if set(roles) >= set(get_roles_disponibles()) else ",".join(roles)
     existente = db.fetch_one("sub_feature_flags",
                                where={"modulo_key": modulo_key, "sub_feature_key": sub_feature_key})
     data = {"activo": activo, "roles_permitidos": roles_str}
@@ -227,7 +304,7 @@ def visible_subfeatures(modulo_key: str, rol: str) -> list[dict]:
     flags = get_subfeatures_full(modulo_key)
     catalogo = SUBFEATURES_CATALOGO.get(modulo_key, [])
     return [sf for sf in catalogo if flags.get(sf["key"], {}).get("activo", True)
-            and rol in flags.get(sf["key"], {}).get("roles", ROLES_DISPONIBLES)]
+            and rol in flags.get(sf["key"], {}).get("roles", get_roles_disponibles())]
 
 
 # ----------------------------------------------------------------------
@@ -289,3 +366,20 @@ def run_readonly_query(sql: str, limit: int = 500) -> list[dict]:
     if "LIMIT" not in sql_upper:
         sql_limpio = f"{sql_limpio} LIMIT {int(limit)}"
     return db.execute_raw(sql_limpio)
+
+
+def run_admin_query(sql: str) -> dict:
+    """
+    Ejecuta CUALQUIER sentencia SQL, incluyendo escritura (INSERT,
+    UPDATE, DELETE, ALTER...). SIN restricciones de palabras clave.
+
+    Exclusivo para el 'modo escritura' del panel de Admin, que ya exige
+    una confirmación explícita del usuario antes de llamar a esta
+    función. No hay red de seguridad aquí — el admin asume el riesgo.
+    Devuelve {"filas": [...]} si la consulta retornó datos (SELECT),
+    o {"filas_afectadas": N} si fue una escritura.
+    """
+    db = get_connector()
+    sql_limpio = sql.strip().rstrip(";")
+    resultado = db.execute_raw(sql_limpio)
+    return {"filas": resultado}

@@ -154,7 +154,11 @@ class GCPCloudSQLConnector(DBConnector):
 
     def execute_raw(self, query: str, params: Optional[dict] = None) -> list[dict]:
         engine = self._ensure_conn()
-        with engine.connect() as conn:
+        # engine.begin() confirma (commit) automáticamente al salir sin error,
+        # y revierte (rollback) si hay excepción — necesario para que los
+        # INSERT/UPDATE/DELETE de este método queden guardados de verdad
+        # (con engine.connect() a secas, una escritura se revierte sola sin avisar).
+        with engine.begin() as conn:
             result = conn.execute(sqlalchemy.text(query), params or {})
             if result.returns_rows:
                 return [dict(row._mapping) for row in result]

@@ -24,15 +24,6 @@ SUPERADMINS = {
     "pract-ingenieria@estra.com.co": "Planeador VIP",
 }
 
-PINES_RAPIDOS = {
-    "9999": {"id": "USR_MASTER_PLAN", "email": "planeador_taller@estra.com.co",
-              "nombre": "Planeador Master", "rol": "PLANEADOR"},
-    "8888": {"id": "USR_AUDITOR", "email": "planeador_parametrizacion@estra.com.co",
-              "nombre": "Auditor de Procesos", "rol": "AUDITOR"},
-    "0000": {"id": "USR_MASTER_TEC", "email": "tecnico_operativo@estra.com.co",
-              "nombre": "Técnico Operativo", "rol": "TECNICO"},
-}
-
 
 def get_current_user(email: str) -> dict:
     email = (email or "").strip().lower()
@@ -54,10 +45,23 @@ def get_current_user(email: str) -> dict:
 
 
 def validar_login_por_pin_rapido(pin_ingresado: str) -> dict:
+    """
+    El PIN identifica un ROL (no una persona puntual) — se usa en
+    planta para entrar rápido sin escribir el correo. Los PINes se
+    administran desde Admin -> Roles y PINes, ya no están fijos aquí.
+    """
     pin = str(pin_ingresado).strip()
-    if pin in PINES_RAPIDOS:
-        return PINES_RAPIDOS[pin]
-    raise ValueError("PIN incorrecto. Acceso denegado.")
+    db = get_connector()
+    fila = db.fetch_one("roles_pines", where={"pin": pin})
+    if not fila:
+        raise ValueError("PIN incorrecto. Acceso denegado.")
+
+    return {
+        "id": f"PIN_{fila['rol_key']}",
+        "email": f"pin.{fila['rol_key'].lower()}@estra.com.co",
+        "nombre": fila.get("nombre_generico") or fila["rol_key"].title(),
+        "rol": fila["rol_key"],
+    }
 
 
 def _tecnicos_por_rol(rol: str) -> list[dict]:
