@@ -1,4 +1,4 @@
-streamlit>=1.38
+streamlit>=1.38,<1.50
 sqlalchemy>=2.0
 cloud-sql-python-connector[pg8000]>=1.10
 pg8000>=1.31
