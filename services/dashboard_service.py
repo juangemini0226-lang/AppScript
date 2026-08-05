@@ -35,3 +35,26 @@ def get_ot_por_estado() -> dict[str, int]:
     db = get_connector()
     rows = db.execute_raw("SELECT estado, COUNT(*) as c FROM ot GROUP BY estado")
     return {r["estado"]: r["c"] for r in rows}
+
+
+def get_ot_por_prioridad() -> dict[str, int]:
+    db = get_connector()
+    rows = db.execute_raw(
+        "SELECT prioridad, COUNT(*) as c FROM ot "
+        "WHERE estado NOT IN ('FINALIZADA', 'TERMINADA') GROUP BY prioridad"
+    )
+    return {r["prioridad"] or "Sin definir": r["c"] for r in rows}
+
+
+def get_novedades_por_estado() -> dict[str, int]:
+    db = get_connector()
+    rows = db.execute_raw("SELECT estado, COUNT(*) as c FROM novedades GROUP BY estado")
+    return {r["estado"] or "Sin definir": r["c"] for r in rows}
+
+
+def get_activos_por_tipo() -> dict[str, int]:
+    db = get_connector()
+    rows = db.execute_raw(
+        "SELECT tipo, COUNT(*) as c FROM activos WHERE activo = TRUE GROUP BY tipo"
+    )
+    return {r["tipo"] or "Sin definir": r["c"] for r in rows}

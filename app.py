@@ -250,6 +250,40 @@ def _home_page():
                    delta_color="inverse" if kpis["ot_alta_prioridad"] > 0 else "normal")
         c4.metric("Novedades pendientes", kpis["novedades_pendientes"])
 
+    st.divider()
+
+    try:
+        from services.dashboard_service import (
+            get_ot_por_prioridad, get_novedades_por_estado, get_activos_por_tipo,
+        )
+        col_g1, col_g2, col_g3 = st.columns(3)
+
+        with col_g1:
+            st.markdown("###### OT abiertas por prioridad")
+            datos = get_ot_por_prioridad()
+            if datos:
+                st.bar_chart(datos, color="#C4483D")
+            else:
+                st.caption("Sin OT abiertas.")
+
+        with col_g2:
+            st.markdown("###### Novedades por estado")
+            datos = get_novedades_por_estado()
+            if datos:
+                st.bar_chart(datos, color="#E8A43B")
+            else:
+                st.caption("Sin novedades registradas.")
+
+        with col_g3:
+            st.markdown("###### Activos por tipo")
+            datos = get_activos_por_tipo()
+            if datos:
+                st.bar_chart(datos, color="#3B6E8F")
+            else:
+                st.caption("Sin activos registrados.")
+    except Exception:
+        pass  # el dashboard sigue funcionando aunque las gráficas fallen
+
 
 def _build_navigation():
     usuario = st.session_state["usuario"]

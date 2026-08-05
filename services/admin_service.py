@@ -155,6 +155,8 @@ SUBFEATURES_CATALOGO = {
         {"key": "crear_activo", "label": "Crear activo"},
         {"key": "csv_masivo", "label": "Cargar CSV masivo"},
         {"key": "plantilla_ubicaciones", "label": "Plantilla de ubicaciones"},
+        {"key": "generar_qr", "label": "Generar QR"},
+        {"key": "exportar", "label": "Exportar a Excel"},
         {"key": "listado", "label": "Listado completo"},
     ],
     "ordenes_trabajo": [

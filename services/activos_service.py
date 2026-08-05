@@ -183,6 +183,19 @@ def eliminar_activos_bulk(ids_activo: list[str]) -> int:
     return total
 
 
+def editar_campo_bulk(ids_activo: list[str], campo: str, valor) -> int:
+    """
+    Actualiza UN campo (ej: zona, tipoactivo, familia, fabricante) para
+    varios activos a la vez — útil para corregir en lote después de una
+    carga masiva por CSV. Exclusivo de Admin.
+    """
+    db = get_connector()
+    total = 0
+    for id_activo in ids_activo:
+        total += db.update("activos", where={"id_activo": id_activo}, data={campo: valor})
+    return total
+
+
 def exportar_activos_para_ubicacion() -> list[dict]:
     """
     Para la plantilla de Excel de ubicaciones: tag y zona actual de

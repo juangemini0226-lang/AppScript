@@ -16,7 +16,7 @@ from services.admin_service import (
     SUBFEATURES_CATALOGO, get_subfeatures_full, set_subfeature_full,
     list_tables, get_table_preview, get_table_row_count, run_readonly_query,
 )
-from services.activos_service import list_activos_todos, eliminar_activos_bulk, desactivar_activo
+from services.activos_service import list_activos_todos, eliminar_activos_bulk, desactivar_activo, editar_campo_bulk
 from services.jerarquia_service import (
     list_nodos, crear_nodo, actualizar_nodo, desactivar_nodo, eliminar_nodo,
     list_tipos_activo, crear_tipo_activo, desactivar_tipo_activo,
@@ -302,6 +302,26 @@ with tab_activos_masivo:
 
     if ids_seleccionados:
         st.write(f"**{len(ids_seleccionados)} activo(s) seleccionado(s).**")
+
+        st.divider()
+        st.write("**✏️ Editar un campo en lote** (aplica el mismo valor a todos los seleccionados)")
+        col_campo, col_valor, col_btn = st.columns([1, 2, 1])
+        with col_campo:
+            campo_masivo = st.selectbox("Campo", ["zona", "tipoactivo", "familia", "fabricante"])
+        with col_valor:
+            valor_masivo = st.text_input("Nuevo valor para todos los seleccionados")
+        with col_btn:
+            st.write("")
+            st.write("")
+            if st.button("✏️ Aplicar a todos"):
+                if not valor_masivo:
+                    st.error("Escribe un valor.")
+                else:
+                    total_editados = editar_campo_bulk(ids_seleccionados, campo_masivo, valor_masivo)
+                    st.success(f"{total_editados} activo(s) actualizado(s) con {campo_masivo} = '{valor_masivo}'.")
+                    st.rerun()
+
+        st.divider()
         col1, col2 = st.columns(2)
 
         with col1:

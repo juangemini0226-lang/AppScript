@@ -17,6 +17,7 @@ from services.activos_service import (
     crear_activos_bulk, exportar_activos_para_ubicacion, importar_ubicaciones_bulk,
 )
 from services.mapa_service import list_zonas as list_zonas_disponibles
+from services.qr_service import generar_qr_png, generar_qr_lote_zip
 from utils.tabs import build_tabs
 
 if "usuario" not in st.session_state:
@@ -310,6 +311,102 @@ if "plantilla_ubicaciones" in tabs:
                                 "(revisa que coincidan exactamente con el Tag registrado):"
                             )
                             st.write(", ".join(resultado["no_encontrados"]))
+
+if "generar_qr" in tabs:
+    with tabs["generar_qr"]:
+        st.subheader("🏷️ Generar códigos QR")
+        st.caption(
+            "Cada QR codifica la ficha básica del activo (tag, nombre, tipo, "
+            "familia, fabricante, zona) como texto plano — se lee con la cámara "
+            "de cualquier celular, sin necesitar internet ni tener la app instalada. "
+            "Útil para imprimir etiquetas físicas y pegarlas en el molde/equipo."
+        )
+
+        modo_qr = st.radio("¿Qué quieres generar?", ["Un solo activo", "Varios activos (lote en .zip)"])
+
+        activos_para_qr = list_activos_todos(solo_activos=True)
+
+        if modo_qr == "Un solo activo":
+            if not activos_para_qr:
+                st.info("No hay activos registrados todavía.")
+            else:
+                activo_qr = st.selectbox(
+                    "Activo", activos_para_qr,
+                    format_func=lambda a: f"{a.get('tag') or a.get('nombre', '—')} ({a.get('id_activo', '—')})",
+                    key="qr_single_select",
+                )
+                if activo_qr and st.button("🏷️ Generar QR"):
+                    png_bytes = generar_qr_png(activo_qr)
+                    st.image(png_bytes, width=220, caption=activo_qr.get("tag") or activo_qr["id_activo"])
+                    st.download_button(
+                        "⬇️ Descargar PNG",
+                        data=png_bytes,
+                        file_name=f"QR_{activo_qr.get('tag') or activo_qr['id_activo']}.png",
+                        mime="image/png",
+                    )
+        else:
+            busqueda_qr = st.text_input("🔍 Filtrar por tag, nombre o ID (opcional)")
+            filtrados_qr = activos_para_qr
+            if busqueda_qr:
+                b = busqueda_qr.lower()
+                filtrados_qr = [a for a in activos_para_qr if b in (a.get("nombre") or "").lower()
+                                 or b in (a.get("id_activo") or "").lower()
+                                 or b in (a.get("tag") or "").lower()]
+
+            opciones_qr = {
+                f"{(a.get('tag') or a['id_activo'])} — {a.get('nombre', '—')}": a
+                for a in filtrados_qr
+            }
+            seleccionar_todos_qr = st.checkbox("Seleccionar todos los que coinciden con el filtro")
+            if seleccionar_todos_qr:
+                elegidos_labels = list(opciones_qr.keys())
+                st.caption(f"{len(elegidos_labels)} activo(s) seleccionados (todos los filtrados).")
+            else:
+                elegidos_labels = st.multiselect("Selecciona los activos", list(opciones_qr.keys()))
+
+            if elegidos_labels:
+                st.write(f"**{len(elegidos_labels)} activo(s) seleccionado(s).**")
+                if st.button(f"🏷️ Generar {len(elegidos_labels)} QR (.zip)", type="primary"):
+                    activos_elegidos = [opciones_qr[lbl] for lbl in elegidos_labels]
+                    with st.spinner("Generando códigos QR..."):
+                        zip_bytes = generar_qr_lote_zip(activos_elegidos)
+                    st.success("Listo.")
+                    st.download_button(
+                        "⬇️ Descargar todos los QR (.zip)",
+                        data=zip_bytes,
+                        file_name="qr_activos.zip",
+                        mime="application/zip",
+                    )
+
+if "exportar" in tabs:
+    with tabs["exportar"]:
+        st.subheader("⬇️ Exportar activos a Excel")
+        st.caption("Exporta el listado completo de activos (o filtrado) a un archivo Excel descargable.")
+
+        busqueda_export = st.text_input("🔍 Filtrar antes de exportar (opcional)")
+        activos_export = list_activos_todos(solo_activos=True)
+        if busqueda_export:
+            b = busqueda_export.lower()
+            activos_export = [a for a in activos_export if b in (a.get("nombre") or "").lower()
+                                or b in (a.get("id_activo") or "").lower()
+                                or b in (a.get("tag") or "").lower()]
+
+        st.caption(f"{len(activos_export)} activo(s) listos para exportar.")
+
+        if activos_export:
+            df_export = pd.DataFrame(activos_export)
+            buffer_export = io.BytesIO()
+            df_export.to_excel(buffer_export, index=False, sheet_name="Activos")
+            buffer_export.seek(0)
+
+            st.download_button(
+                "⬇️ Descargar Excel",
+                data=buffer_export,
+                file_name="activos_exportados.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+            )
+            st.dataframe(df_export.head(10), use_container_width=True)
 
 if "listado" in tabs:
     with tabs["listado"]:
